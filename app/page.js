@@ -711,6 +711,11 @@ function TaskRow({ task, depth, members, getMember, onToggle, onToggleAssignee, 
   const [childrenOpen, setChildrenOpen] = useState(true);
   const hasChildren = task.children?.length > 0;
   const indent = depth * 20;
+  const subAll = hasChildren ? flattenTasks(task.children) : [];
+  const subDone = subAll.filter(t => t.done).length;
+  const subTotal = subAll.length;
+  const subPct = subTotal ? Math.round((subDone / subTotal) * 100) : 0;
+  const subColor = subPct === 100 ? '#2ecc71' : subPct > 60 ? '#3498db' : subPct > 30 ? '#f39c12' : '#6366f1';
   // Subtasks (depth > 0) are made draggable here; root tasks are made draggable by their wrapper in ShowDetailView
   const subDragProps = depth > 0 ? {
     draggable: true,
@@ -727,6 +732,14 @@ function TaskRow({ task, depth, members, getMember, onToggle, onToggleAssignee, 
           : <span className="w-3 flex-shrink-0" />}
         <button onClick={() => onToggle(task.id, task.done)} className={`w-5 h-5 rounded flex-shrink-0 border-2 flex items-center justify-center transition-colors ${task.done ? 'bg-green-600 border-green-600' : 'border-gray-600 hover:border-indigo-400'}`}>{task.done && <span className="text-white text-xs">✓</span>}</button>
         <span className={`flex-1 text-sm ${task.done ? 'line-through text-gray-500' : 'text-gray-200'}`}>{task.title}</span>
+        {hasChildren && (
+          <div className="flex items-center gap-1.5 flex-shrink-0">
+            <div className="w-16 h-1.5 bg-gray-700 rounded-full overflow-hidden">
+              <div className="h-full rounded-full transition-all duration-500" style={{ width: `${subPct}%`, backgroundColor: subColor }} />
+            </div>
+            <span className="text-xs text-gray-500 tabular-nums">{subDone}/{subTotal}</span>
+          </div>
+        )}
         <PriorityBadge priority={task.priority} />
         {task.notes && <button onClick={() => setExpandedNotes(p => ({ ...p, [task.id]: !p[task.id] }))} className={`hidden sm:block text-xs px-1 py-0.5 rounded transition-colors ${expandedNotes[task.id] ? 'text-indigo-400' : 'text-gray-600 hover:text-gray-400'}`}>📝</button>}
         <DeadlineBadge deadline={task.deadline} done={task.done} />
