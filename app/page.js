@@ -182,6 +182,48 @@ const removeTaskFromTree = (tasks, taskId) =>
 const markAllInTree = (tasks, done) =>
   tasks.map(t => ({ ...t, done, children: markAllInTree(t.children || [], done) }));
 
+const autoCompleteParents = (tasks, taskId, newDone) => {
+  const updated = updateTaskInTree(tasks, taskId, { done: newDone });
+  if (!newDone) return updated;
+  const cascade = (nodes) =>
+    nodes.map(t => {
+      const kids = cascade(t.children || []);
+      const allKidsDone = kids.length > 0 && kids.every(c => c.done);
+      return { ...t, children: kids, done: allKidsDone ? true : t.done };
+    });
+  return cascade(updated);
+};
+
+const moveInArray = (arr, i, dir) => {
+  const next = [...arr];
+  const j = dir === 'up' ? i - 1 : i + 1;
+  if (j < 0 || j >= next.length) return arr;
+  [next[i], next[j]] = [next[j], next[i]];
+  return next;
+};
+
+const moveTaskInTree = (tasks, taskId, dir) => {
+  const idx = tasks.findIndex(t => t.id === taskId);
+  if (idx !== -1) return moveInArray(tasks, idx, dir).map((t, si) => ({ ...t, sort_order: si }));
+  return tasks.map(t => ({ ...t, children: moveTaskInTree(t.children || [], taskId, dir) }));
+};
+
+// ─── Custom Templates (localStorage) ─────────────────────────────────────────
+const CUSTOM_TEMPLATES_KEY = 'theatre_pm_templates';
+const loadCustomTemplates = () => {
+  if (typeof window === 'undefined') return [];
+  try { return JSON.parse(localStorage.getItem(CUSTOM_TEMPLATES_KEY) || '[]'); } catch { return []; }
+};
+const saveCustomTemplate = (name, show) => {
+  const stripTasks = (tasks) => tasks.map(t => ({ title: t.title, notes: t.notes || '', children: stripTasks(t.children || []) }));
+  const tmpl = { id: Date.now().toString(), name, savedAt: new Date().toISOString(),
+    categories: show.categories.map(cat => ({ title: cat.title, items: cat.items.map(item => ({ title: item.title, tasks: stripTasks(item.tasks) })) })) };
+  localStorage.setItem(CUSTOM_TEMPLATES_KEY, JSON.stringify([...loadCustomTemplates(), tmpl]));
+  return tmpl;
+};
+const deleteCustomTemplate = (id) =>
+  localStorage.setItem(CUSTOM_TEMPLATES_KEY, JSON.stringify(loadCustomTemplates().filter(t => t.id !== id)));
+
 const ProgressBar = ({ pct, size = 'md' }) => {
   const h = size === 'sm' ? 'h-1.5' : size === 'lg' ? 'h-3' : 'h-2';
   const color = pct === 100 ? '#2ecc71' : pct > 60 ? '#3498db' : pct > 30 ? '#f39c12' : '#e74c3c';
@@ -264,6 +306,7 @@ export default function App() {
   const [filterMember, setFilterMember] = useState('all');
   const [filterStatus, setFilterStatus] = useState('all');
   const [saving, setSaving] = useState(false);
+  const [customTemplates, setCustomTemplates] = useState(() => loadCustomTemplates());
 
   // ── Load all data ──────────────────────────────────────────────────────────
   const loadAll = useCallback(async () => {
@@ -312,20 +355,27 @@ export default function App() {
   const activeShow = shows.find(s => s.id === activeShowId);
 
   // ── Show CRUD ──────────────────────────────────────────────────────────────
-  const createShow = async (form, useTemplate) => {
+  const insertTasksRecursive = async (subId, parentId, tasks) => {
+    for (let ti = 0; ti < tasks.length; ti++) {
+      const task = tasks[ti];
+      const ins = { title: task.title, notes: task.notes || '', sort_order: ti };
+      if (parentId) ins.parent_id = parentId; else ins.subcategory_id = subId;
+      const { data: row } = await supabase.from('tasks').insert(ins).select().single();
+      if (task.children?.length) await insertTasksRecursive(subId, row.id, task.children);
+    }
+  };
+
+  const createShow = async (form, templateData) => {
     await withSaving(async () => {
       const { data: show } = await supabase.from('shows').insert({ title: form.title, venue: form.venue, opening_night: form.openingNight || null, color: form.color }).select().single();
-      if (useTemplate) {
-        for (let ci = 0; ci < LOAD_IN_TEMPLATE.length; ci++) {
-          const cat = LOAD_IN_TEMPLATE[ci];
+      if (templateData) {
+        for (let ci = 0; ci < templateData.length; ci++) {
+          const cat = templateData[ci];
           const { data: catRow } = await supabase.from('categories').insert({ show_id: show.id, title: cat.title, sort_order: ci }).select().single();
           for (let ii = 0; ii < cat.items.length; ii++) {
             const item = cat.items[ii];
             const { data: subRow } = await supabase.from('subcategories').insert({ category_id: catRow.id, title: item.title, sort_order: ii }).select().single();
-            for (let ti = 0; ti < item.tasks.length; ti++) {
-              const task = item.tasks[ti];
-              await supabase.from('tasks').insert({ subcategory_id: subRow.id, title: task.title, notes: task.notes || '', sort_order: ti });
-            }
+            await insertTasksRecursive(subRow.id, null, item.tasks);
           }
         }
       }
@@ -418,8 +468,30 @@ export default function App() {
     setShows(prev => prev.map(s => ({ ...s, categories: s.categories.map(c => ({ ...c, items: c.items.map(i => i.id === subId ? { ...i, tasks: markAllInTree(i.tasks, targetDone) } : i) })) })));
   };
   const toggleTask = async (taskId, current) => {
-    await supabase.from('tasks').update({ done: !current }).eq('id', taskId);
-    setShows(prev => prev.map(s => ({ ...s, categories: s.categories.map(c => ({ ...c, items: c.items.map(i => ({ ...i, tasks: updateTaskInTree(i.tasks, taskId, { done: !current }) })) })) })));
+    const newDone = !current;
+    await supabase.from('tasks').update({ done: newDone }).eq('id', taskId);
+    const autoIds = [];
+    setShows(prev => prev.map(s => ({
+      ...s,
+      categories: s.categories.map(c => ({
+        ...c,
+        items: c.items.map(i => {
+          const oldFlat = flattenTasks(i.tasks);
+          const newTasks = autoCompleteParents(i.tasks, taskId, newDone);
+          if (newDone) {
+            flattenTasks(newTasks).forEach(nt => {
+              if (nt.id !== taskId && nt.done) {
+                const old = oldFlat.find(ot => ot.id === nt.id);
+                if (old && !old.done) autoIds.push(nt.id);
+              }
+            });
+          }
+          return { ...i, tasks: newTasks };
+        }),
+      })),
+    })));
+    if (autoIds.length)
+      await Promise.all(autoIds.map(id => supabase.from('tasks').update({ done: true }).eq('id', id)));
   };
   const deleteTask = async (taskId) => {
     await withSaving(async () => {
@@ -427,6 +499,39 @@ export default function App() {
       setShows(prev => prev.map(s => ({ ...s, categories: s.categories.map(c => ({ ...c, items: c.items.map(i => ({ ...i, tasks: removeTaskFromTree(i.tasks, taskId) })) })) })));
     });
   };
+
+  const reorderTask = async (taskId, dir) => {
+    let nodeA = null, nodeB = null;
+    outer: for (const s of shows)
+      for (const c of s.categories)
+        for (const i of c.items) {
+          const find = (nodes) => {
+            const idx = nodes.findIndex(t => t.id === taskId);
+            if (idx !== -1) {
+              const j = dir === 'up' ? idx - 1 : idx + 1;
+              if (j >= 0 && j < nodes.length) { nodeA = { id: nodes[idx].id, order: j }; nodeB = { id: nodes[j].id, order: idx }; }
+              return true;
+            }
+            return nodes.some(t => find(t.children || []));
+          };
+          if (find(i.tasks)) break outer;
+        }
+    if (!nodeA) return;
+    setShows(prev => prev.map(s => ({
+      ...s,
+      categories: s.categories.map(c => ({
+        ...c,
+        items: c.items.map(i => ({ ...i, tasks: moveTaskInTree(i.tasks, taskId, dir) })),
+      })),
+    })));
+    await withSaving(async () => {
+      await supabase.from('tasks').update({ sort_order: nodeA.order }).eq('id', nodeA.id);
+      await supabase.from('tasks').update({ sort_order: nodeB.order }).eq('id', nodeB.id);
+    });
+  };
+
+  const saveShowAsTemplate = (name, show) => { saveCustomTemplate(name, show); setCustomTemplates(loadCustomTemplates()); };
+  const removeCustomTemplate = (id) => { deleteCustomTemplate(id); setCustomTemplates(loadCustomTemplates()); };
 
   // ── Member CRUD ────────────────────────────────────────────────────────────
   const createMember = async (form) => {
@@ -483,7 +588,7 @@ export default function App() {
       <div className="pt-14">
         {view === 'shows' && <ShowsView shows={shows} onNew={() => setModal({ type: 'addShow' })} onOpen={(id) => { setActiveShowId(id); setView('show'); }} onDelete={(id, title) => askConfirm(`Delete "${title}"? This cannot be undone.`, () => deleteShow(id))} />}
         {view === 'show' && activeShow && (
-          <ShowDetailView show={activeShow} members={members} getMember={getMember}
+          <ShowDetailView show={activeShow} shows={shows} members={members} getMember={getMember}
             expandedCats={expandedCats} setExpandedCats={setExpandedCats}
             expandedItems={expandedItems} setExpandedItems={setExpandedItems}
             onBack={() => setView('shows')}
@@ -500,6 +605,9 @@ export default function App() {
             onEditTask={(task) => setModal({ type: 'editTask', task })}
             onToggleTask={toggleTask}
             onDeleteTask={(taskId, title) => askConfirm(`Delete task "${title}"?`, () => deleteTask(taskId))}
+            onReorderTask={reorderTask}
+            onSwitchShow={(id) => setActiveShowId(id)}
+            onSaveTemplate={() => { const name = window.prompt('Template name:', activeShow.title); if (name?.trim()) saveShowAsTemplate(name.trim(), activeShow); }}
           />
         )}
         {view === 'todo' && (
@@ -511,7 +619,7 @@ export default function App() {
       </div>
 
       {/* Modals */}
-      {modal?.type === 'addShow' && <AddShowModal onClose={() => setModal(null)} onSave={createShow} />}
+      {modal?.type === 'addShow' && <AddShowModal onClose={() => setModal(null)} onSave={createShow} customTemplates={customTemplates} onDeleteTemplate={removeCustomTemplate} />}
       {modal?.type === 'members' && <MembersModal members={members} onClose={() => setModal(null)} onAdd={createMember} onDelete={(id) => askConfirm('Remove team member? They will be unassigned from all tasks.', () => deleteMember(id))} />}
       {modal?.type === 'addTask' && <TaskModal title="New Task" members={members} onClose={() => setModal(null)} onSave={(form) => createTask(modal.subId, form)} />}
       {modal?.type === 'addSubtask' && <TaskModal title="New Subtask" members={members} onClose={() => setModal(null)} onSave={(form) => createSubtask(modal.parentId, form)} />}
@@ -563,8 +671,42 @@ function ShowsView({ shows, onNew, onOpen, onDelete }) {
   );
 }
 
+// ─── Show Title Switcher ──────────────────────────────────────────────────────
+function ShowTitleSwitcher({ show, shows, onSwitch }) {
+  const [open, setOpen] = useState(false);
+  const others = shows.filter(s => s.id !== show.id);
+  return (
+    <div className="relative inline-block" onMouseEnter={() => setOpen(true)} onMouseLeave={() => setOpen(false)}>
+      <div className="flex items-center gap-2 cursor-pointer group">
+        <div className="w-4 h-4 rounded-full flex-shrink-0" style={{ backgroundColor: show.color }} />
+        <h1 className="text-2xl font-bold text-white group-hover:text-indigo-300 transition-colors">{show.title}</h1>
+        {others.length > 0 && <span className="text-gray-500 text-sm">▾</span>}
+      </div>
+      {open && others.length > 0 && (
+        <div className="absolute top-full left-0 mt-1 bg-gray-800 border border-gray-600 rounded-xl shadow-2xl z-30 min-w-[220px] py-1 overflow-hidden">
+          <p className="text-xs text-gray-500 px-3 pt-2 pb-1 uppercase tracking-wide">Switch show</p>
+          {others.map(s => {
+            const pct = calcProgress(s.categories.flatMap(c => c.items.flatMap(i => flattenTasks(i.tasks))));
+            return (
+              <button key={s.id} onClick={() => onSwitch(s.id)}
+                className="w-full flex items-center gap-2 px-3 py-2 hover:bg-gray-700 text-left transition-colors">
+                <div className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: s.color }} />
+                <div className="flex-1 min-w-0">
+                  <div className="text-white text-sm font-medium truncate">{s.title}</div>
+                  {s.venue && <div className="text-gray-500 text-xs truncate">{s.venue}</div>}
+                </div>
+                <span className="text-xs text-gray-500 flex-shrink-0">{pct}%</span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Show Detail View ─────────────────────────────────────────────────────────
-function ShowDetailView({ show, members, getMember, expandedCats, setExpandedCats, expandedItems, setExpandedItems, onBack, onDelete, onAddCategory, onDeleteCategory, onAddSub, onDeleteSub, onToggleSub, onToggleAllSubTasks, onAddTask, onAddSubtask, onEditTask, onToggleTask, onToggleAssignee, onDeleteTask }) {
+function ShowDetailView({ show, shows, members, getMember, expandedCats, setExpandedCats, expandedItems, setExpandedItems, onBack, onDelete, onAddCategory, onDeleteCategory, onAddSub, onDeleteSub, onToggleSub, onToggleAllSubTasks, onAddTask, onAddSubtask, onEditTask, onToggleTask, onToggleAssignee, onDeleteTask, onReorderTask, onSwitchShow, onSaveTemplate }) {
   const [newCatName, setNewCatName] = useState('');
   const [expandedNotes, setExpandedNotes] = useState({});
   const allT = show.categories.flatMap(c => c.items.flatMap(i => flattenTasks(i.tasks)));
@@ -574,9 +716,12 @@ function ShowDetailView({ show, members, getMember, expandedCats, setExpandedCat
     <div className="p-4 max-w-4xl mx-auto">
       <button onClick={onBack} className="text-gray-400 hover:text-white text-sm mb-4">← All Shows</button>
       <div className="flex items-start justify-between mb-2 flex-wrap gap-2">
-        <div><div className="flex items-center gap-2"><div className="w-4 h-4 rounded-full" style={{ backgroundColor: show.color }} /><h1 className="text-2xl font-bold text-white">{show.title}</h1></div>
-          {show.venue && <p className="text-gray-400 text-sm mt-0.5">{show.venue}{show.opening_night && ` · Opens ${fmt(show.opening_night)}`}</p>}</div>
+        <div>
+          <ShowTitleSwitcher show={show} shows={shows} onSwitch={onSwitchShow} />
+          {show.venue && <p className="text-gray-400 text-sm mt-0.5">{show.venue}{show.opening_night && ` · Opens ${fmt(show.opening_night)}`}</p>}
+        </div>
         <div className="flex gap-2">
+          <button onClick={onSaveTemplate} className="bg-gray-700 hover:bg-gray-600 text-gray-300 hover:text-white px-3 py-1.5 rounded-lg text-sm transition-colors">💾 Save as Template</button>
           <button onClick={onDelete} className="bg-gray-700 hover:bg-red-700 text-gray-300 hover:text-white px-3 py-1.5 rounded-lg text-sm transition-colors">🗑 Delete</button>
         </div>
       </div>
@@ -618,12 +763,14 @@ function ShowDetailView({ show, members, getMember, expandedCats, setExpandedCat
                         </div>
                         {itemOpen && (
                           <div className="pb-2 pt-1" style={{ backgroundColor: '#1a1f2e' }}>
-                            {item.tasks.map(task => (
+                            {item.tasks.map((task, idx) => (
                               <TaskRow key={task.id} task={task} depth={0}
                                 members={members} getMember={getMember}
                                 onToggle={onToggleTask} onToggleAssignee={onToggleAssignee}
                                 onEditTask={onEditTask} onDeleteTask={onDeleteTask}
                                 onAddSubtask={onAddSubtask}
+                                onReorderTask={onReorderTask}
+                                isFirst={idx === 0} isLast={idx === item.tasks.length - 1}
                                 expandedNotes={expandedNotes} setExpandedNotes={setExpandedNotes} />
                             ))}
                             {item.tasks.length === 0 && <p className="text-gray-600 text-xs py-2 px-9">No tasks yet.</p>}
@@ -653,7 +800,7 @@ function ShowDetailView({ show, members, getMember, expandedCats, setExpandedCat
   );
 }
 
-function TaskRow({ task, depth, members, getMember, onToggle, onToggleAssignee, onEditTask, onDeleteTask, onAddSubtask, expandedNotes, setExpandedNotes }) {
+function TaskRow({ task, depth, members, getMember, onToggle, onToggleAssignee, onEditTask, onDeleteTask, onAddSubtask, onReorderTask, isFirst, isLast, expandedNotes, setExpandedNotes }) {
   const [childrenOpen, setChildrenOpen] = useState(true);
   const hasChildren = task.children?.length > 0;
   const indent = depth * 20;
@@ -671,6 +818,8 @@ function TaskRow({ task, depth, members, getMember, onToggle, onToggleAssignee, 
         <DeadlineBadge deadline={task.deadline} done={task.done} />
         <QuickAssign task={task} members={members} getMember={getMember} onToggle={onToggleAssignee} />
         <div className="opacity-0 group-hover:opacity-100 flex gap-1 transition-opacity">
+          <button onClick={() => onReorderTask(task.id, 'up')} disabled={isFirst} className="text-gray-500 hover:text-indigo-400 px-1 py-1 rounded hover:bg-gray-700 text-xs disabled:opacity-20 disabled:cursor-default" title="Move up">↑</button>
+          <button onClick={() => onReorderTask(task.id, 'down')} disabled={isLast} className="text-gray-500 hover:text-indigo-400 px-1 py-1 rounded hover:bg-gray-700 text-xs disabled:opacity-20 disabled:cursor-default" title="Move down">↓</button>
           <button onClick={() => onAddSubtask(task.id)} className="text-gray-500 hover:text-indigo-400 px-1 py-1 rounded hover:bg-gray-700 text-xs" title="Add subtask">⊕</button>
           <button onClick={() => onEditTask(task)} className="text-gray-500 hover:text-indigo-400 px-1 py-1 rounded hover:bg-gray-700 text-xs">✏</button>
           <button onClick={() => onDeleteTask(task.id, task.title)} className="text-gray-500 hover:text-red-400 px-1 py-1 rounded hover:bg-gray-700 text-xs">🗑</button>
@@ -681,12 +830,14 @@ function TaskRow({ task, depth, members, getMember, onToggle, onToggleAssignee, 
           <p className="text-gray-400 text-xs bg-gray-900/60 rounded-lg px-3 py-2 leading-relaxed whitespace-pre-line">{task.notes}</p>
         </div>
       )}
-      {hasChildren && childrenOpen && task.children.map(child => (
+      {hasChildren && childrenOpen && task.children.map((child, childIdx) => (
         <TaskRow key={child.id} task={child} depth={depth + 1}
           members={members} getMember={getMember}
           onToggle={onToggle} onToggleAssignee={onToggleAssignee}
           onEditTask={onEditTask} onDeleteTask={onDeleteTask}
           onAddSubtask={onAddSubtask}
+          onReorderTask={onReorderTask}
+          isFirst={childIdx === 0} isLast={childIdx === task.children.length - 1}
           expandedNotes={expandedNotes} setExpandedNotes={setExpandedNotes} />
       ))}
     </div>
@@ -772,30 +923,50 @@ function TodoView({ tasks, members, getMember, filterMember, setFilterMember, fi
 // ─── Add Show Modal ───────────────────────────────────────────────────────────
 const TEMPLATE_SUMMARY = `${LOAD_IN_TEMPLATE.length} categories · ${LOAD_IN_TEMPLATE.reduce((a,c)=>a+c.items.length,0)} subcategories · ${LOAD_IN_TEMPLATE.reduce((a,c)=>a+c.items.reduce((b,i)=>b+i.tasks.length,0),0)} tasks`;
 
-function AddShowModal({ onClose, onSave }) {
+function AddShowModal({ onClose, onSave, customTemplates = [], onDeleteTemplate }) {
   const [form, setForm] = useState({ title: '', venue: '', openingNight: '', color: SHOW_COLORS[0] });
-  const [useTemplate, setUseTemplate] = useState(true);
+  // templateChoice: 'builtin' | custom template id | 'blank'
+  const [templateChoice, setTemplateChoice] = useState('builtin');
   const [saving, setSaving] = useState(false);
   const handleSave = async () => {
     if (!form.title.trim() || saving) return;
     setSaving(true);
-    await onSave(form, useTemplate);
+    let templateData = null;
+    if (templateChoice === 'builtin') templateData = LOAD_IN_TEMPLATE;
+    else if (templateChoice !== 'blank') {
+      const t = customTemplates.find(t => t.id === templateChoice);
+      if (t) templateData = t.categories;
+    }
+    await onSave(form, templateData);
     setSaving(false);
     onClose();
   };
+  const isSelected = (val) => templateChoice === val;
   return (
     <Modal title="New Show" onClose={onClose}>
       <div className="space-y-3">
-        <div className={`rounded-xl border-2 p-3 cursor-pointer ${useTemplate ? 'border-indigo-500 bg-indigo-900/20' : 'border-gray-600 hover:border-gray-500'}`} onClick={() => setUseTemplate(true)}>
+        <div className={`rounded-xl border-2 p-3 cursor-pointer ${isSelected('builtin') ? 'border-indigo-500 bg-indigo-900/20' : 'border-gray-600 hover:border-gray-500'}`} onClick={() => setTemplateChoice('builtin')}>
           <div className="flex items-start gap-3">
-            <div className={`w-5 h-5 rounded-full border-2 flex-shrink-0 mt-0.5 flex items-center justify-center ${useTemplate ? 'border-indigo-400 bg-indigo-500' : 'border-gray-500'}`}>{useTemplate && <div className="w-2 h-2 rounded-full bg-white" />}</div>
+            <div className={`w-5 h-5 rounded-full border-2 flex-shrink-0 mt-0.5 flex items-center justify-center ${isSelected('builtin') ? 'border-indigo-400 bg-indigo-500' : 'border-gray-500'}`}>{isSelected('builtin') && <div className="w-2 h-2 rounded-full bg-white" />}</div>
             <div><div className="flex items-center gap-2 flex-wrap"><span className="text-white font-semibold text-sm">🎭 Load-In Template</span><span className="bg-indigo-700 text-indigo-200 text-xs px-2 py-0.5 rounded">Recommended</span></div>
               <p className="text-gray-400 text-xs mt-1">Full production checklist — {TEMPLATE_SUMMARY}. Delete what you don&apos;t need.</p></div>
           </div>
         </div>
-        <div className={`rounded-xl border-2 p-3 cursor-pointer ${!useTemplate ? 'border-indigo-500 bg-indigo-900/20' : 'border-gray-600 hover:border-gray-500'}`} onClick={() => setUseTemplate(false)}>
+        {customTemplates.map(t => (
+          <div key={t.id} className={`rounded-xl border-2 p-3 cursor-pointer ${isSelected(t.id) ? 'border-indigo-500 bg-indigo-900/20' : 'border-gray-600 hover:border-gray-500'}`} onClick={() => setTemplateChoice(t.id)}>
+            <div className="flex items-center gap-3">
+              <div className={`w-5 h-5 rounded-full border-2 flex-shrink-0 flex items-center justify-center ${isSelected(t.id) ? 'border-indigo-400 bg-indigo-500' : 'border-gray-500'}`}>{isSelected(t.id) && <div className="w-2 h-2 rounded-full bg-white" />}</div>
+              <div className="flex-1 min-w-0">
+                <span className="text-white font-semibold text-sm">📁 {t.name}</span>
+                <p className="text-gray-400 text-xs mt-0.5">{t.categories.length} categories · saved {new Date(t.savedAt).toLocaleDateString()}</p>
+              </div>
+              <button onClick={e => { e.stopPropagation(); onDeleteTemplate(t.id); }} className="text-gray-600 hover:text-red-400 text-lg px-1" title="Delete template">×</button>
+            </div>
+          </div>
+        ))}
+        <div className={`rounded-xl border-2 p-3 cursor-pointer ${isSelected('blank') ? 'border-indigo-500 bg-indigo-900/20' : 'border-gray-600 hover:border-gray-500'}`} onClick={() => setTemplateChoice('blank')}>
           <div className="flex items-center gap-3">
-            <div className={`w-5 h-5 rounded-full border-2 flex-shrink-0 flex items-center justify-center ${!useTemplate ? 'border-indigo-400 bg-indigo-500' : 'border-gray-500'}`}>{!useTemplate && <div className="w-2 h-2 rounded-full bg-white" />}</div>
+            <div className={`w-5 h-5 rounded-full border-2 flex-shrink-0 flex items-center justify-center ${isSelected('blank') ? 'border-indigo-400 bg-indigo-500' : 'border-gray-500'}`}>{isSelected('blank') && <div className="w-2 h-2 rounded-full bg-white" />}</div>
             <div><span className="text-white font-semibold text-sm">📋 Blank Show</span><p className="text-gray-400 text-xs mt-0.5">Start from scratch.</p></div>
           </div>
         </div>
@@ -816,7 +987,7 @@ function AddShowModal({ onClose, onSave }) {
         <div className="flex justify-end gap-2 pt-1">
           <button onClick={onClose} className="px-4 py-2 rounded-lg text-gray-400 hover:text-white text-sm">Cancel</button>
           <button onClick={handleSave} disabled={!form.title.trim() || saving} className="px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 text-white text-sm font-medium">
-            {saving ? 'Creating…' : useTemplate ? 'Create from Template →' : 'Create Blank →'}
+            {saving ? 'Creating…' : isSelected('blank') ? 'Create Blank →' : 'Create from Template →'}
           </button>
         </div>
       </div>
