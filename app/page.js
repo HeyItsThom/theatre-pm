@@ -531,7 +531,7 @@ function ShowsView({ shows, onNew, onOpen, onDelete }) {
       </div>
       <div className="grid gap-4 sm:grid-cols-2">
         {shows.map(s => {
-          const allT = s.categories.flatMap(c => c.items.flatMap(i => i.tasks));
+          const allT = s.categories.flatMap(c => c.items.flatMap(i => flattenTasks(i.tasks)));
           const pct = calcProgress(allT);
           const overdueCount = allT.filter(t => !t.done && isOverdue(t.deadline)).length;
           return (
