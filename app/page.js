@@ -122,6 +122,18 @@ const removeTaskFromTree = (tasks, taskId) =>
   tasks.filter(t => t.id !== taskId).map(t => ({ ...t, children: removeTaskFromTree(t.children || [], taskId) }));
 const markAllInTree = (tasks, done) =>
   tasks.map(t => ({ ...t, done, children: markAllInTree(t.children || [], done) }));
+// Extract a task (and its subtree) from anywhere in the tree; returns { plucked, remaining }
+const pluckTask = (tasks, taskId) => {
+  let plucked = null;
+  const remaining = tasks.reduce((acc, t) => {
+    if (t.id === taskId) { plucked = t; return acc; }
+    const { plucked: p, remaining: r } = pluckTask(t.children || [], taskId);
+    if (p) { plucked = p; acc.push({ ...t, children: r }); }
+    else acc.push(t);
+    return acc;
+  }, []);
+  return { plucked, remaining };
+};
 
 const ProgressBar = ({ pct, size = 'md' }) => {
   const h = size === 'sm' ? 'h-1.5' : size === 'lg' ? 'h-3' : 'h-2';
@@ -370,6 +382,29 @@ export default function App() {
     setShows(prev => prev.map(s => ({ ...s, categories: s.categories.map(c => c.id === catId ? { ...c, tasks: newTasks } : c) })));
     await Promise.all(newTasks.map((t, idx) => supabase.from('tasks').update({ sort_order: idx }).eq('id', t.id)));
   };
+  const nestTask = async (taskId, newParentId) => {
+    setShows(prev => prev.map(s => ({
+      ...s, categories: s.categories.map(c => {
+        const { plucked, remaining } = pluckTask(c.tasks, taskId);
+        if (!plucked) return c;
+        return { ...c, tasks: addChildToTask(remaining, newParentId, plucked) };
+      })
+    })));
+    await supabase.from('tasks').update({ parent_id: newParentId, subcategory_id: null }).eq('id', taskId);
+  };
+  const reorderCategories = async (showId, fromCatId, toCatId) => {
+    if (fromCatId === toCatId) return;
+    const show = shows.find(s => s.id === showId);
+    if (!show) return;
+    const cats = [...show.categories];
+    const fi = cats.findIndex(c => c.id === fromCatId);
+    const ti = cats.findIndex(c => c.id === toCatId);
+    if (fi === -1 || ti === -1) return;
+    const [moved] = cats.splice(fi, 1);
+    cats.splice(ti, 0, moved);
+    setShows(prev => prev.map(s => s.id === showId ? { ...s, categories: cats } : s));
+    await Promise.all(cats.map((c, idx) => supabase.from('categories').update({ sort_order: idx }).eq('id', c.id)));
+  };
   const toggleAllCatTasks = async (catId, targetDone) => {
     const cat = shows.flatMap(s => s.categories).find(c => c.id === catId);
     const taskIds = flattenTasks(cat?.tasks || []).map(t => t.id);
@@ -446,6 +481,8 @@ export default function App() {
             onToggleAssignee={toggleTaskAssignee}
             onDeleteTask={(taskId, title) => askConfirm(`Delete task "${title}"?`, () => deleteTask(taskId))}
             onReorderTasks={reorderTasks}
+            onNestTask={nestTask}
+            onReorderCategories={(from, to) => reorderCategories(activeShow.id, from, to)}
           />
         )}
         {view === 'todo' && (
@@ -510,15 +547,23 @@ function ShowsView({ shows, onNew, onOpen, onDelete }) {
 }
 
 // ─── Show Detail View ─────────────────────────────────────────────────────────
-function ShowDetailView({ show, members, getMember, expandedCats, setExpandedCats, onBack, onDelete, onAddCategory, onDeleteCategory, onToggleAllCatTasks, onAddTask, onAddSubtask, onEditTask, onToggleTask, onToggleAssignee, onDeleteTask, onReorderTasks }) {
+function ShowDetailView({ show, members, getMember, expandedCats, setExpandedCats, onBack, onDelete, onAddCategory, onDeleteCategory, onToggleAllCatTasks, onAddTask, onAddSubtask, onEditTask, onToggleTask, onToggleAssignee, onDeleteTask, onReorderTasks, onNestTask, onReorderCategories }) {
   const [newCatName, setNewCatName] = useState('');
   const [expandedNotes, setExpandedNotes] = useState({});
-  const [dragTaskId, setDragTaskId] = useState(null);
-  const [dragCatId, setDragCatId] = useState(null);
+  // Task drag state
+  const [draggedTaskId, setDraggedTaskId] = useState(null);
+  const [taskSrcCatId, setTaskSrcCatId] = useState(null);
   const [dragOverTaskId, setDragOverTaskId] = useState(null);
+  const [dragIntent, setDragIntent] = useState(null); // 'reorder' | 'nest'
+  // Category drag state
+  const [draggedCatId, setDraggedCatId] = useState(null);
+  const [dragOverCatId, setDragOverCatId] = useState(null);
 
   const allT = show.categories.flatMap(c => flattenTasks(c.tasks));
   const pct = calcProgress(allT);
+
+  const clearTaskDrag = () => { setDraggedTaskId(null); setTaskSrcCatId(null); setDragOverTaskId(null); setDragIntent(null); };
+  const clearCatDrag = () => { setDraggedCatId(null); setDragOverCatId(null); };
 
   return (
     <div className="p-4 max-w-4xl mx-auto">
@@ -539,9 +584,20 @@ function ShowDetailView({ show, members, getMember, expandedCats, setExpandedCat
           const allDone = catT.length > 0 && catT.every(t => t.done);
           const anyDone = catT.some(t => t.done);
           const open = expandedCats[cat.id] !== false;
+          const isCatDragTarget = dragOverCatId === cat.id && draggedCatId && draggedCatId !== cat.id;
           return (
-            <div key={cat.id} className="bg-gray-800 rounded-xl border border-gray-700 overflow-hidden">
+            <div key={cat.id}
+              onDragOver={e => { e.preventDefault(); if (draggedCatId) setDragOverCatId(cat.id); }}
+              onDragLeave={e => { if (!e.currentTarget.contains(e.relatedTarget)) setDragOverCatId(p => p === cat.id ? null : p); }}
+              onDrop={e => { e.preventDefault(); if (draggedCatId && draggedCatId !== cat.id) onReorderCategories(draggedCatId, cat.id); clearCatDrag(); }}
+              style={{ opacity: draggedCatId === cat.id ? 0.4 : 1, boxShadow: isCatDragTarget ? '0 0 0 2px #6366f1' : 'none' }}
+              className="bg-gray-800 rounded-xl border border-gray-700 overflow-hidden">
               <div className="flex items-center gap-3 p-4">
+                {/* Category drag handle */}
+                <div draggable
+                  onDragStart={e => { e.stopPropagation(); setDraggedCatId(cat.id); }}
+                  onDragEnd={clearCatDrag}
+                  className="cursor-grab text-gray-600 hover:text-gray-400 select-none flex-shrink-0 px-0.5 text-base leading-none" title="Drag to reorder">⠿</div>
                 {cat.tasks.length === 0
                   ? <span className="w-5 h-5 flex-shrink-0" />
                   : <button onClick={() => onToggleAllCatTasks(cat.id, !allDone)} className={`w-5 h-5 rounded flex-shrink-0 border-2 flex items-center justify-center transition-colors ${allDone ? 'bg-green-600 border-green-600' : anyDone ? 'border-indigo-400 bg-indigo-900/40' : 'border-gray-500 hover:border-indigo-400'}`}>
@@ -555,23 +611,49 @@ function ShowDetailView({ show, members, getMember, expandedCats, setExpandedCat
               </div>
               {open && (
                 <div className="border-t border-gray-700" style={{ backgroundColor: '#1a1f2e' }}>
-                  {cat.tasks.map(task => (
-                    <div key={task.id}
-                      draggable
-                      onDragStart={() => { setDragTaskId(task.id); setDragCatId(cat.id); }}
-                      onDragEnd={() => { setDragTaskId(null); setDragCatId(null); setDragOverTaskId(null); }}
-                      onDragOver={e => { e.preventDefault(); setDragOverTaskId(task.id); }}
-                      onDragLeave={() => setDragOverTaskId(p => p === task.id ? null : p)}
-                      onDrop={e => { e.preventDefault(); if (dragTaskId && dragCatId === cat.id) onReorderTasks(cat.id, dragTaskId, task.id); setDragTaskId(null); setDragCatId(null); setDragOverTaskId(null); }}
-                      style={{ opacity: dragTaskId === task.id ? 0.4 : 1, borderTop: dragOverTaskId === task.id && dragTaskId !== task.id && dragCatId === cat.id ? '2px solid #6366f1' : '2px solid transparent' }}>
-                      <TaskRow task={task} depth={0}
-                        members={members} getMember={getMember}
-                        onToggle={onToggleTask} onToggleAssignee={onToggleAssignee}
-                        onEditTask={onEditTask} onDeleteTask={onDeleteTask}
-                        onAddSubtask={onAddSubtask}
-                        expandedNotes={expandedNotes} setExpandedNotes={setExpandedNotes} />
-                    </div>
-                  ))}
+                  {cat.tasks.map(task => {
+                    const isTaskDragSrc = draggedTaskId === task.id;
+                    const isOver = dragOverTaskId === task.id && draggedTaskId && !isTaskDragSrc;
+                    return (
+                      <div key={task.id}
+                        draggable
+                        onDragStart={() => { setDraggedTaskId(task.id); setTaskSrcCatId(cat.id); }}
+                        onDragEnd={clearTaskDrag}
+                        onDragOver={e => {
+                          e.preventDefault(); e.stopPropagation();
+                          if (!draggedTaskId) return;
+                          setDragOverTaskId(task.id);
+                          const rect = e.currentTarget.getBoundingClientRect();
+                          const ratio = (e.clientY - rect.top) / rect.height;
+                          setDragIntent(ratio < 0.3 || ratio > 0.7 ? 'reorder' : 'nest');
+                        }}
+                        onDragLeave={e => { if (!e.currentTarget.contains(e.relatedTarget)) { setDragOverTaskId(p => p === task.id ? null : p); } }}
+                        onDrop={e => {
+                          e.preventDefault(); e.stopPropagation();
+                          if (draggedTaskId && draggedTaskId !== task.id) {
+                            if (dragIntent === 'nest' || taskSrcCatId !== cat.id) {
+                              onNestTask(draggedTaskId, task.id);
+                            } else {
+                              onReorderTasks(cat.id, draggedTaskId, task.id);
+                            }
+                          }
+                          clearTaskDrag();
+                        }}
+                        style={{
+                          opacity: isTaskDragSrc ? 0.4 : 1,
+                          borderTop: isOver && dragIntent === 'reorder' ? '2px solid #6366f1' : '2px solid transparent',
+                          boxShadow: isOver && dragIntent === 'nest' ? '0 0 0 2px #6366f1 inset' : 'none',
+                          borderRadius: isOver && dragIntent === 'nest' ? '8px' : '',
+                        }}>
+                        <TaskRow task={task} depth={0}
+                          members={members} getMember={getMember}
+                          onToggle={onToggleTask} onToggleAssignee={onToggleAssignee}
+                          onEditTask={onEditTask} onDeleteTask={onDeleteTask}
+                          onAddSubtask={onAddSubtask}
+                          expandedNotes={expandedNotes} setExpandedNotes={setExpandedNotes} />
+                      </div>
+                    );
+                  })}
                   {cat.tasks.length === 0 && <p className="text-gray-600 text-xs py-3 px-5">No tasks yet — add one below.</p>}
                   <div className="px-4 py-2 border-t border-gray-700/50">
                     <button onClick={() => onAddTask(cat.id)} className="text-gray-500 hover:text-indigo-400 text-sm px-2 py-1 rounded hover:bg-gray-700/50 transition-colors">+ Add Task</button>
