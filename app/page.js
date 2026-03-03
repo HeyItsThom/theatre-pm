@@ -368,6 +368,16 @@ export default function App() {
       await loadAll();
     });
   };
+  const toggleTaskAssignee = async (taskId, memberId, currentAssignees) => {
+    const newAssignees = currentAssignees.includes(memberId)
+      ? currentAssignees.filter(id => id !== memberId)
+      : [...currentAssignees, memberId];
+    await supabase.from('task_assignees').delete().eq('task_id', taskId);
+    if (newAssignees.length) {
+      await supabase.from('task_assignees').insert(newAssignees.map(mid => ({ task_id: taskId, member_id: mid })));
+    }
+    setShows(prev => prev.map(s => ({ ...s, categories: s.categories.map(c => ({ ...c, items: c.items.map(i => ({ ...i, tasks: i.tasks.map(t => t.id === taskId ? { ...t, assignees: newAssignees } : t) })) })) })));
+  };
   const toggleSubcategory = async (subId, current) => {
     await supabase.from('subcategories').update({ done: !current }).eq('id', subId);
     setShows(prev => prev.map(s => ({ ...s, categories: s.categories.map(c => ({ ...c, items: c.items.map(i => i.id === subId ? { ...i, done: !current } : i) })) })));
@@ -448,6 +458,7 @@ export default function App() {
             onDeleteSub={(subId, title) => askConfirm(`Delete subcategory "${title}" and all tasks?`, () => deleteSubcategory(subId))}
             onToggleSub={toggleSubcategory}
             onToggleAllSubTasks={toggleAllSubTasks}
+            onToggleAssignee={toggleTaskAssignee}
             onAddTask={(subId) => setModal({ type: 'addTask', subId })}
             onEditTask={(task) => setModal({ type: 'editTask', task })}
             onToggleTask={toggleTask}
@@ -515,8 +526,9 @@ function ShowsView({ shows, onNew, onOpen, onDelete }) {
 }
 
 // ─── Show Detail View ─────────────────────────────────────────────────────────
-function ShowDetailView({ show, members, getMember, expandedCats, setExpandedCats, expandedItems, setExpandedItems, onBack, onDelete, onAddCategory, onDeleteCategory, onAddSub, onDeleteSub, onToggleSub, onToggleAllSubTasks, onAddTask, onEditTask, onToggleTask, onDeleteTask }) {
+function ShowDetailView({ show, members, getMember, expandedCats, setExpandedCats, expandedItems, setExpandedItems, onBack, onDelete, onAddCategory, onDeleteCategory, onAddSub, onDeleteSub, onToggleSub, onToggleAllSubTasks, onAddTask, onEditTask, onToggleTask, onToggleAssignee, onDeleteTask }) {
   const [newCatName, setNewCatName] = useState('');
+  const [expandedNotes, setExpandedNotes] = useState({});
   const allT = show.categories.flatMap(c => c.items.flatMap(i => i.tasks));
   const pct = calcProgress(allT);
 
@@ -566,17 +578,24 @@ function ShowDetailView({ show, members, getMember, expandedCats, setExpandedCat
                         {itemOpen && (
                           <div className="px-6 pb-2 pt-1 space-y-1" style={{ backgroundColor: '#1a1f2e' }}>
                             {item.tasks.map(task => (
-                              <div key={task.id} className={`flex items-center gap-3 py-2 px-3 rounded-lg group ${task.done ? 'opacity-60' : ''}`} style={{ backgroundColor: task.done ? 'transparent' : 'rgba(255,255,255,0.02)' }}>
-                                <button onClick={() => onToggleTask(task.id, task.done)} className={`w-5 h-5 rounded flex-shrink-0 border-2 flex items-center justify-center transition-colors ${task.done ? 'bg-green-600 border-green-600' : 'border-gray-600 hover:border-indigo-400'}`}>{task.done && <span className="text-white text-xs">✓</span>}</button>
-                                <span className={`flex-1 text-sm ${task.done ? 'line-through text-gray-500' : 'text-gray-200'}`}>{task.title}</span>
-                                <PriorityBadge priority={task.priority} />
-                                {task.notes && <span className="text-gray-600 hidden sm:block" title={task.notes}>📝</span>}
-                                <DeadlineBadge deadline={task.deadline} done={task.done} />
-                                <div className="flex -space-x-1">{task.assignees.map(aid => { const m = getMember(aid); return m ? <Avatar key={aid} member={m} /> : null; })}</div>
-                                <div className="opacity-0 group-hover:opacity-100 flex gap-1 transition-opacity">
-                                  <button onClick={() => onEditTask(task)} className="text-gray-500 hover:text-indigo-400 px-1 py-1 rounded hover:bg-gray-700 text-xs">✏</button>
-                                  <button onClick={() => onDeleteTask(task.id, task.title)} className="text-gray-500 hover:text-red-400 px-1 py-1 rounded hover:bg-gray-700 text-xs">🗑</button>
+                              <div key={task.id}>
+                                <div className={`flex items-center gap-3 py-2 px-3 rounded-lg group ${task.done ? 'opacity-60' : ''}`} style={{ backgroundColor: task.done ? 'transparent' : 'rgba(255,255,255,0.02)' }}>
+                                  <button onClick={() => onToggleTask(task.id, task.done)} className={`w-5 h-5 rounded flex-shrink-0 border-2 flex items-center justify-center transition-colors ${task.done ? 'bg-green-600 border-green-600' : 'border-gray-600 hover:border-indigo-400'}`}>{task.done && <span className="text-white text-xs">✓</span>}</button>
+                                  <span className={`flex-1 text-sm ${task.done ? 'line-through text-gray-500' : 'text-gray-200'}`}>{task.title}</span>
+                                  <PriorityBadge priority={task.priority} />
+                                  {task.notes && <button onClick={() => setExpandedNotes(p => ({ ...p, [task.id]: !p[task.id] }))} className={`hidden sm:block text-xs px-1 py-0.5 rounded transition-colors ${expandedNotes[task.id] ? 'text-indigo-400' : 'text-gray-600 hover:text-gray-400'}`}>📝</button>}
+                                  <DeadlineBadge deadline={task.deadline} done={task.done} />
+                                  <QuickAssign task={task} members={members} getMember={getMember} onToggle={onToggleAssignee} />
+                                  <div className="opacity-0 group-hover:opacity-100 flex gap-1 transition-opacity">
+                                    <button onClick={() => onEditTask(task)} className="text-gray-500 hover:text-indigo-400 px-1 py-1 rounded hover:bg-gray-700 text-xs">✏</button>
+                                    <button onClick={() => onDeleteTask(task.id, task.title)} className="text-gray-500 hover:text-red-400 px-1 py-1 rounded hover:bg-gray-700 text-xs">🗑</button>
+                                  </div>
                                 </div>
+                                {expandedNotes[task.id] && task.notes && (
+                                  <div className="ml-11 px-3 pb-1">
+                                    <p className="text-gray-400 text-xs bg-gray-900/60 rounded-lg px-3 py-2 leading-relaxed whitespace-pre-line">{task.notes}</p>
+                                  </div>
+                                )}
                               </div>
                             ))}
                             {item.tasks.length === 0 && <p className="text-gray-600 text-xs py-2">No tasks yet.</p>}
@@ -615,6 +634,28 @@ function AddSubcategoryInline({ catId, onAdd }) {
         placeholder="Add subcategory…"
         className="flex-1 bg-gray-900 border border-gray-700 rounded-lg px-3 py-1.5 text-white text-xs focus:outline-none focus:border-indigo-500" />
       <button onClick={() => { if (val.trim()) { onAdd(catId, val.trim()); setVal(''); } }} className="text-gray-500 hover:text-indigo-400 text-xs px-2">+ Sub</button>
+    </div>
+  );
+}
+
+function QuickAssign({ task, members, getMember, onToggle }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="relative flex items-center gap-1">
+      <div className="flex -space-x-1">{task.assignees.map(aid => { const m = getMember(aid); return m ? <Avatar key={aid} member={m} /> : null; })}</div>
+      <button onClick={() => setOpen(o => !o)} className={`w-5 h-5 rounded-full border flex items-center justify-center text-xs transition-colors ${open ? 'border-indigo-400 text-indigo-400' : 'border-gray-600 text-gray-500 hover:border-indigo-400 hover:text-indigo-400'}`}>+</button>
+      {open && (
+        <div className="absolute right-0 top-full mt-1 bg-gray-800 border border-gray-600 rounded-lg p-2 z-20 flex flex-wrap gap-1.5 shadow-xl min-w-max" onMouseLeave={() => setOpen(false)}>
+          {members.length === 0 && <p className="text-gray-500 text-xs px-1 py-0.5">No team members yet.</p>}
+          {members.map(m => (
+            <button key={m.id} title={m.name} onClick={() => onToggle(task.id, m.id, task.assignees)}
+              className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-white text-xs transition-all ${task.assignees.includes(m.id) ? 'ring-2 ring-white ring-offset-1 ring-offset-gray-800' : 'opacity-40 hover:opacity-100'}`}
+              style={{ backgroundColor: m.color }}>
+              {m.name.split(' ').map(n => n[0]).join('')}
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
