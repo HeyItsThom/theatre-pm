@@ -189,6 +189,12 @@ const Badge = ({ children, color = 'gray' }) => {
   return <span className={`px-2 py-0.5 rounded text-xs font-medium ${colors[color]}`}>{children}</span>;
 };
 
+const PriorityBadge = ({ priority }) => {
+  if (!priority || priority === 'medium') return null;
+  if (priority === 'high') return <Badge color="red">↑ High</Badge>;
+  return <Badge color="gray">↓ Low</Badge>;
+};
+
 const DeadlineBadge = ({ deadline, done }) => {
   if (!deadline) return null;
   if (done) return <Badge color="green">✓ Done</Badge>;
@@ -344,7 +350,7 @@ export default function App() {
   // ── Task CRUD ──────────────────────────────────────────────────────────────
   const createTask = async (subId, form) => {
     await withSaving(async () => {
-      const { data: task } = await supabase.from('tasks').insert({ subcategory_id: subId, title: form.title, notes: form.notes || '', deadline: form.deadline || null, sort_order: 999 }).select().single();
+      const { data: task } = await supabase.from('tasks').insert({ subcategory_id: subId, title: form.title, notes: form.notes || '', deadline: form.deadline || null, priority: form.priority || 'medium', sort_order: 999 }).select().single();
       if (form.assignees?.length) {
         await supabase.from('task_assignees').insert(form.assignees.map(mid => ({ task_id: task.id, member_id: mid })));
       }
@@ -354,13 +360,22 @@ export default function App() {
   };
   const updateTask = async (taskId, form) => {
     await withSaving(async () => {
-      await supabase.from('tasks').update({ title: form.title, notes: form.notes || '', deadline: form.deadline || null }).eq('id', taskId);
+      await supabase.from('tasks').update({ title: form.title, notes: form.notes || '', deadline: form.deadline || null, priority: form.priority || 'medium' }).eq('id', taskId);
       await supabase.from('task_assignees').delete().eq('task_id', taskId);
       if (form.assignees?.length) {
         await supabase.from('task_assignees').insert(form.assignees.map(mid => ({ task_id: taskId, member_id: mid })));
       }
       await loadAll();
     });
+  };
+  const toggleSubcategory = async (subId, current) => {
+    await supabase.from('subcategories').update({ done: !current }).eq('id', subId);
+    setShows(prev => prev.map(s => ({ ...s, categories: s.categories.map(c => ({ ...c, items: c.items.map(i => i.id === subId ? { ...i, done: !current } : i) })) })));
+  };
+  const toggleAllSubTasks = async (subId, targetDone) => {
+    const taskIds = shows.flatMap(s => s.categories.flatMap(c => c.items)).find(i => i.id === subId)?.tasks.map(t => t.id) || [];
+    await Promise.all(taskIds.map(id => supabase.from('tasks').update({ done: targetDone }).eq('id', id)));
+    setShows(prev => prev.map(s => ({ ...s, categories: s.categories.map(c => ({ ...c, items: c.items.map(i => i.id === subId ? { ...i, tasks: i.tasks.map(t => ({ ...t, done: targetDone })) } : i) })) })));
   };
   const toggleTask = async (taskId, current) => {
     await supabase.from('tasks').update({ done: !current }).eq('id', taskId);
@@ -431,6 +446,8 @@ export default function App() {
             onDeleteCategory={(catId, title) => askConfirm(`Delete category "${title}" and all tasks?`, () => deleteCategory(catId))}
             onAddSub={(catId, title) => createSubcategory(catId, title)}
             onDeleteSub={(subId, title) => askConfirm(`Delete subcategory "${title}" and all tasks?`, () => deleteSubcategory(subId))}
+            onToggleSub={toggleSubcategory}
+            onToggleAllSubTasks={toggleAllSubTasks}
             onAddTask={(subId) => setModal({ type: 'addTask', subId })}
             onEditTask={(task) => setModal({ type: 'editTask', task })}
             onToggleTask={toggleTask}
@@ -498,7 +515,7 @@ function ShowsView({ shows, onNew, onOpen, onDelete }) {
 }
 
 // ─── Show Detail View ─────────────────────────────────────────────────────────
-function ShowDetailView({ show, members, getMember, expandedCats, setExpandedCats, expandedItems, setExpandedItems, onBack, onDelete, onAddCategory, onDeleteCategory, onAddSub, onDeleteSub, onAddTask, onEditTask, onToggleTask, onDeleteTask }) {
+function ShowDetailView({ show, members, getMember, expandedCats, setExpandedCats, expandedItems, setExpandedItems, onBack, onDelete, onAddCategory, onDeleteCategory, onAddSub, onDeleteSub, onToggleSub, onToggleAllSubTasks, onAddTask, onEditTask, onToggleTask, onDeleteTask }) {
   const [newCatName, setNewCatName] = useState('');
   const allT = show.categories.flatMap(c => c.items.flatMap(i => i.tasks));
   const pct = calcProgress(allT);
@@ -536,10 +553,13 @@ function ShowDetailView({ show, members, getMember, expandedCats, setExpandedCat
                     return (
                       <div key={item.id}>
                         <div className="flex items-center gap-3 px-6 py-3 bg-gray-800">
+                          {item.tasks.length === 0
+                            ? <button onClick={() => onToggleSub(item.id, item.done)} className={`w-5 h-5 rounded flex-shrink-0 border-2 flex items-center justify-center transition-colors ${item.done ? 'bg-green-600 border-green-600' : 'border-gray-500 hover:border-indigo-400'}`}>{item.done && <span className="text-white text-xs">✓</span>}</button>
+                            : <button onClick={() => onToggleAllSubTasks(item.id, !item.tasks.every(t => t.done))} className={`w-5 h-5 rounded flex-shrink-0 border-2 flex items-center justify-center transition-colors ${item.tasks.every(t => t.done) ? 'bg-green-600 border-green-600' : item.tasks.some(t => t.done) ? 'border-indigo-400 bg-indigo-900/40' : 'border-gray-500 hover:border-indigo-400'}`}>{item.tasks.every(t => t.done) ? <span className="text-white text-xs">✓</span> : item.tasks.some(t => t.done) ? <span className="text-indigo-400 text-xs">–</span> : null}</button>
+                          }
                           <button className="text-gray-500 text-xs w-3" onClick={() => setExpandedItems(p => ({ ...p, [item.id]: !itemOpen }))}>{itemOpen ? '▾' : '▸'}</button>
-                          <span className="text-gray-200 font-medium flex-1 cursor-pointer" onClick={() => setExpandedItems(p => ({ ...p, [item.id]: !itemOpen }))}>{item.title}</span>
-                          <div className="w-24 hidden sm:block"><ProgressBar pct={itemPct} size="sm" /></div>
-                          <Badge color={itemPct === 100 ? 'green' : 'gray'}>{item.tasks.filter(t => t.done).length}/{item.tasks.length}</Badge>
+                          <span className={`font-medium flex-1 cursor-pointer ${item.tasks.length === 0 && item.done ? 'line-through text-gray-500' : 'text-gray-200'}`} onClick={() => setExpandedItems(p => ({ ...p, [item.id]: !itemOpen }))}>{item.title}</span>
+                          {item.tasks.length > 0 && <><div className="w-24 hidden sm:block"><ProgressBar pct={itemPct} size="sm" /></div><Badge color={itemPct === 100 ? 'green' : 'gray'}>{item.tasks.filter(t => t.done).length}/{item.tasks.length}</Badge></>}
                           <button onClick={() => onAddTask(item.id)} className="text-gray-500 hover:text-indigo-400 text-sm px-2 py-1 rounded hover:bg-gray-700">+ Task</button>
                           <button onClick={() => onDeleteSub(item.id, item.title)} className="text-gray-600 hover:text-red-400 px-1 py-1 rounded hover:bg-gray-700">🗑</button>
                         </div>
@@ -549,6 +569,7 @@ function ShowDetailView({ show, members, getMember, expandedCats, setExpandedCat
                               <div key={task.id} className={`flex items-center gap-3 py-2 px-3 rounded-lg group ${task.done ? 'opacity-60' : ''}`} style={{ backgroundColor: task.done ? 'transparent' : 'rgba(255,255,255,0.02)' }}>
                                 <button onClick={() => onToggleTask(task.id, task.done)} className={`w-5 h-5 rounded flex-shrink-0 border-2 flex items-center justify-center transition-colors ${task.done ? 'bg-green-600 border-green-600' : 'border-gray-600 hover:border-indigo-400'}`}>{task.done && <span className="text-white text-xs">✓</span>}</button>
                                 <span className={`flex-1 text-sm ${task.done ? 'line-through text-gray-500' : 'text-gray-200'}`}>{task.title}</span>
+                                <PriorityBadge priority={task.priority} />
                                 {task.notes && <span className="text-gray-600 hidden sm:block" title={task.notes}>📝</span>}
                                 <DeadlineBadge deadline={task.deadline} done={task.done} />
                                 <div className="flex -space-x-1">{task.assignees.map(aid => { const m = getMember(aid); return m ? <Avatar key={aid} member={m} /> : null; })}</div>
@@ -626,6 +647,7 @@ function TodoView({ tasks, members, getMember, filterMember, setFilterMember, fi
                 <div key={task.id} className={`flex items-center gap-3 px-4 py-3 ${task.done ? 'opacity-60' : ''}`}>
                   <button onClick={() => onToggle(task.id, task.done)} className={`w-5 h-5 rounded flex-shrink-0 border-2 flex items-center justify-center ${task.done ? 'bg-green-600 border-green-600' : 'border-gray-600 hover:border-indigo-400'}`}>{task.done && <span className="text-white text-xs">✓</span>}</button>
                   <div className="flex-1 min-w-0"><div className={`text-sm ${task.done ? 'line-through text-gray-500' : 'text-gray-200'}`}>{task.title}</div><div className="text-xs text-gray-500">{task.catTitle} › {task.itemTitle}</div></div>
+                  <PriorityBadge priority={task.priority} />
                   <DeadlineBadge deadline={task.deadline} done={task.done} />
                   <div className="flex -space-x-1">{task.assignees.map(aid => { const m = getMember(aid); return m ? <Avatar key={aid} member={m} /> : null; })}</div>
                 </div>
@@ -734,7 +756,7 @@ function MembersModal({ members, onClose, onAdd, onDelete }) {
 
 // ─── Task Modal ───────────────────────────────────────────────────────────────
 function TaskModal({ title, members, initial = {}, onClose, onSave }) {
-  const [form, setForm] = useState({ title: initial.title || '', deadline: initial.deadline || '', notes: initial.notes || '', assignees: initial.assignees || [] });
+  const [form, setForm] = useState({ title: initial.title || '', deadline: initial.deadline || '', notes: initial.notes || '', assignees: initial.assignees || [], priority: initial.priority || 'medium' });
   const [saving, setSaving] = useState(false);
   const toggle = (id) => setForm(f => ({ ...f, assignees: f.assignees.includes(id) ? f.assignees.filter(a => a !== id) : [...f.assignees, id] }));
   const handleSave = async () => {
@@ -756,6 +778,20 @@ function TaskModal({ title, members, initial = {}, onClose, onSave }) {
         <div><label className="text-xs text-gray-400 block mb-1">Notes</label>
           <textarea value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} rows={2} placeholder="Any notes…"
             className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-indigo-500 resize-none" /></div>
+        <div><label className="text-xs text-gray-400 block mb-1">Priority</label>
+          <div className="flex gap-2">
+            {['low', 'medium', 'high'].map(p => (
+              <button key={p} onClick={() => setForm(f => ({ ...f, priority: p }))}
+                className={`flex-1 py-1.5 rounded-lg text-xs font-medium border transition-colors ${form.priority === p
+                  ? p === 'high' ? 'bg-red-900/60 border-red-500 text-red-300'
+                    : p === 'low' ? 'bg-gray-700 border-gray-400 text-gray-200'
+                    : 'bg-indigo-900/60 border-indigo-500 text-indigo-300'
+                  : 'border-gray-600 text-gray-500 hover:border-gray-500'}`}>
+                {p === 'high' ? '↑ High' : p === 'medium' ? 'Medium' : '↓ Low'}
+              </button>
+            ))}
+          </div>
+        </div>
         <div><label className="text-xs text-gray-400 block mb-2">Assign crew</label>
           <div className="flex flex-wrap gap-2">
             {members.map(m => (<button key={m.id} onClick={() => toggle(m.id)} className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm border ${form.assignees.includes(m.id) ? 'border-indigo-500 bg-indigo-900 text-white' : 'border-gray-600 text-gray-400 hover:border-gray-500'}`}>
