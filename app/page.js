@@ -19,145 +19,86 @@ const daysLeft = (d) => {
 
 // ─── Load-In Template ─────────────────────────────────────────────────────────
 const LOAD_IN_TEMPLATE = [
-  { title: 'Prep & Pre-Production', items: [
-    { title: 'Pre-Production', tasks: [
-      { title: 'Read script & attend design meetings' },
-      { title: 'Review lighting design & plot' },
-      { title: 'Prepare equipment list' },
-      { title: 'Order / hire additional equipment' },
-      { title: 'Check all hired gear on delivery' },
-    ]},
-    { title: 'Paperwork', tasks: [
-      { title: 'Receive & review channel hookup' },
-      { title: 'Receive & review patch schedule' },
-      { title: 'Prepare dimmer schedule' },
-      { title: 'Prepare colour / gel cut list' },
-      { title: 'Risk assessment completed & signed' },
-    ]},
+  { title: 'Prep & Pre-Production', tasks: [
+    { title: 'Read script & attend design meetings' },
+    { title: 'Review lighting design & plot' },
+    { title: 'Prepare equipment list' },
+    { title: 'Order / hire additional equipment' },
+    { title: 'Check all hired gear on delivery' },
+    { title: 'Receive & review channel hookup' },
+    { title: 'Receive & review patch schedule' },
+    { title: 'Prepare dimmer schedule' },
+    { title: 'Prepare colour / gel cut list' },
+    { title: 'Risk assessment completed & signed' },
   ]},
-  { title: 'Hang', items: [
-    { title: 'Grid', tasks: [
-      { title: 'Check grid access & safety', notes: 'Confirm PASMA / working at height certs' },
-      { title: 'Rig grid bars to plot' },
-      { title: 'Safety bond all units', notes: '100% bond policy' },
-      { title: 'Hang colour / gobos to gel list' },
-      { title: 'Cable grid positions' },
-    ]},
-    { title: 'Catwalk', tasks: [
-      { title: 'Rig catwalk positions to plot' },
-      { title: 'Safety bond all units' },
-      { title: 'Cable catwalk runs' },
-    ]},
-    { title: 'FOH / Auditorium', tasks: [
-      { title: 'Rig circle bar / front of house positions' },
-      { title: 'Safety bond all units' },
-      { title: 'Cable FOH positions' },
-    ]},
-    { title: 'Back of House', tasks: [
-      { title: 'Rig BOH practicals & specials' },
-      { title: 'Cable BOH positions' },
-    ]},
-    { title: 'Advance & Boom Positions', tasks: [
-      { title: 'Rig advance bar' },
-      { title: 'Rig boom arms' },
-      { title: 'Safety bond all boom units' },
-      { title: 'Cable booms' },
-    ]},
+  { title: 'Hang', tasks: [
+    { title: 'Check grid access & safety', notes: 'Confirm PASMA / working at height certs' },
+    { title: 'Rig grid bars to plot' },
+    { title: 'Safety bond all units', notes: '100% bond policy' },
+    { title: 'Hang colour / gobos to gel list' },
+    { title: 'Cable grid positions' },
+    { title: 'Rig catwalk positions to plot' },
+    { title: 'Rig circle bar / front of house positions' },
+    { title: 'Rig BOH practicals & specials' },
+    { title: 'Rig advance bar & boom arms' },
+    { title: 'Safety bond all boom units' },
   ]},
-  { title: 'Practicals', items: [
-    { title: 'Window Light Boxes', tasks: [
-      { title: 'LED tape install' },
-      { title: 'Equipment install & bracket' },
-      { title: 'Cable run & tidy' },
-      { title: 'Test & sign off' },
-    ]},
-    { title: 'Table Lamps', tasks: [
-      { title: 'Bulb install', notes: 'Check wattage against prop list' },
-      { title: 'Equipment fit & cable' },
-      { title: 'Test & sign off' },
-    ]},
-    { title: 'Practical Wall Lights / Sconces', tasks: [
-      { title: 'Fit & cable' },
-      { title: 'Test & sign off' },
-    ]},
-    { title: 'Neon / Signage', tasks: [
-      { title: 'Install & secure' },
-      { title: 'Cable & test' },
-    ]},
+  { title: 'Practicals', tasks: [
+    { title: 'LED tape install' },
+    { title: 'Equipment install & bracket' },
+    { title: 'Cable run & tidy' },
+    { title: 'Bulb install', notes: 'Check wattage against prop list' },
+    { title: 'Fit & cable wall lights / sconces' },
+    { title: 'Install & secure neon / signage' },
+    { title: 'Test & sign off all practicals' },
   ]},
-  { title: 'Dimmers & Data', items: [
-    { title: 'Dimmer Rack', tasks: [
-      { title: 'Dimmer rack positioning & installation' },
-      { title: 'Mains supply confirmed & signed off', notes: 'Requires qualified electrician sign-off' },
-      { title: 'Patch & address dimmers to hookup' },
-      { title: 'Test all circuits — full load test' },
-    ]},
-    { title: 'Network & DMX', tasks: [
-      { title: 'Run DMX / data cables' },
-      { title: 'Install & configure network switches' },
-      { title: 'Universe map agreed with LD' },
-      { title: 'Test all data runs' },
-    ]},
-    { title: 'Moving Lights', tasks: [
-      { title: 'Address all moving lights' },
-      { title: 'Test pan/tilt/colour/gobo' },
-      { title: 'Home all fixtures' },
-    ]},
+  { title: 'Dimmers & Data', tasks: [
+    { title: 'Dimmer rack positioning & installation' },
+    { title: 'Mains supply confirmed & signed off', notes: 'Requires qualified electrician sign-off' },
+    { title: 'Patch & address dimmers to hookup' },
+    { title: 'Test all circuits — full load test' },
+    { title: 'Run DMX / data cables' },
+    { title: 'Install & configure network switches' },
+    { title: 'Universe map agreed with LD' },
+    { title: 'Test all data runs' },
+    { title: 'Address & home all moving lights' },
   ]},
-  { title: 'Focus & Plot', items: [
-    { title: 'Focus Session', tasks: [
-      { title: 'Focus session scheduled with LD' },
-      { title: 'Focus all generic fixtures' },
-      { title: 'Focus all moving lights' },
-      { title: 'Focus practicals & specials' },
-      { title: 'Record focus notes / positions' },
-    ]},
-    { title: 'Console', tasks: [
-      { title: 'Desk positioned & powered' },
-      { title: 'Showfile loaded & backed up' },
-      { title: 'All channels tested from desk' },
-      { title: 'Submasters / playbacks set up' },
-    ]},
+  { title: 'Focus & Plot', tasks: [
+    { title: 'Focus session scheduled with LD' },
+    { title: 'Focus all generic fixtures' },
+    { title: 'Focus all moving lights' },
+    { title: 'Focus practicals & specials' },
+    { title: 'Record focus notes / positions' },
+    { title: 'Desk positioned & powered' },
+    { title: 'Showfile loaded & backed up' },
+    { title: 'All channels tested from desk' },
+    { title: 'Submasters / playbacks set up' },
   ]},
-  { title: 'Rehearsals & Technical', items: [
-    { title: 'Tech Prep', tasks: [
-      { title: 'Sitzprobe / stagger-through notes actioned' },
-      { title: 'All rigging checks completed pre-tech' },
-      { title: 'On-call crew briefed' },
-    ]},
-    { title: 'Tech & Dress', tasks: [
-      { title: 'Technical rehearsal support' },
-      { title: 'Dress rehearsal support' },
-      { title: 'Notes session after each run' },
-      { title: 'Preview notes actioned' },
-    ]},
+  { title: 'Rehearsals & Technical', tasks: [
+    { title: 'Sitzprobe / stagger-through notes actioned' },
+    { title: 'All rigging checks completed pre-tech' },
+    { title: 'Technical rehearsal support' },
+    { title: 'Dress rehearsal support' },
+    { title: 'Notes session after each run' },
+    { title: 'Preview notes actioned' },
   ]},
-  { title: 'Opening & Run', items: [
-    { title: 'Opening Night', tasks: [
-      { title: 'Full rig check completed' },
-      { title: 'Spare lamps / gels stocked' },
-      { title: 'On-call crew confirmed for run' },
-    ]},
-    { title: 'Show Run Maintenance', tasks: [
-      { title: 'Daily pre-show checklist completed' },
-      { title: 'Weekly rig inspection' },
-      { title: 'Replacement schedule maintained' },
-    ]},
+  { title: 'Opening & Run', tasks: [
+    { title: 'Full rig check completed' },
+    { title: 'Spare lamps / gels stocked' },
+    { title: 'On-call crew confirmed for run' },
+    { title: 'Daily pre-show checklist completed' },
+    { title: 'Weekly rig inspection' },
   ]},
-  { title: 'Get-Out', items: [
-    { title: 'De-rig', tasks: [
-      { title: 'All fixtures de-rigged safely' },
-      { title: 'All cable coiled & labelled' },
-      { title: 'Colour / gels removed & sorted' },
-      { title: 'Hired equipment returned — checked against delivery note' },
-      { title: 'Own stock returned to store — inventory updated' },
-    ]},
-    { title: 'Closeout', tasks: [
-      { title: 'Dimmer rack disconnected & removed' },
-      { title: 'Venue electrical systems returned to house state' },
-      { title: 'Post-show report written' },
-      { title: 'Lessons learned / handover notes completed' },
-    ]},
+  { title: 'Get-Out', tasks: [
+    { title: 'All fixtures de-rigged safely' },
+    { title: 'All cable coiled & labelled' },
+    { title: 'Colour / gels removed & sorted' },
+    { title: 'Hired equipment returned — checked against delivery note' },
+    { title: 'Own stock returned to store — inventory updated' },
+    { title: 'Dimmer rack disconnected & removed' },
+    { title: 'Venue electrical systems returned to house state' },
+    { title: 'Post-show report written' },
+    { title: 'Lessons learned / handover notes completed' },
   ]},
 ];
 
@@ -171,8 +112,6 @@ const flattenTasks = (tasks) => {
   walk(tasks);
   return out;
 };
-// Flatten tasks from a subcategory; if it has no tasks, treat it as one unit using its own done flag
-const subUnits = (item) => { const t = flattenTasks(item.tasks); return t.length ? t : [{ done: !!item.done }]; };
 const buildTaskTree = (allTasks, parentId) =>
   allTasks.filter(t => t.parent_id === parentId).map(t => ({ ...t, children: buildTaskTree(allTasks, t.id) }));
 const addChildToTask = (tasks, parentId, child) =>
@@ -260,7 +199,6 @@ export default function App() {
   const [view, setView] = useState('shows');
   const [activeShowId, setActiveShowId] = useState(null);
   const [expandedCats, setExpandedCats] = useState({});
-  const [expandedItems, setExpandedItems] = useState({});
   const [modal, setModal] = useState(null);
   const [confirm, setConfirm] = useState(null);
   const [filterMember, setFilterMember] = useState('all');
@@ -268,6 +206,8 @@ export default function App() {
   const [saving, setSaving] = useState(false);
 
   // ── Load all data ──────────────────────────────────────────────────────────
+  // State shape: show.categories[].{ ...cat, tasks: TaskNode[], _subId: uuid|null }
+  // Subcategories are invisible DB containers; all tasks are collapsed to category level.
   const loadAll = useCallback(async () => {
     setLoading(true);
     try {
@@ -287,16 +227,20 @@ export default function App() {
       });
 
       const tasksWithAssignees = (tasksRes.data || []).map(t => ({ ...t, assignees: taskAssigneeMap[t.id] || [], children: [] }));
+
+      // Collapse subcategories: group all root tasks by category_id, keep first sub id as default
       const subMap = {};
       (subsRes.data || []).forEach(s => {
-        if (!subMap[s.category_id]) subMap[s.category_id] = [];
+        if (!subMap[s.category_id]) subMap[s.category_id] = { _subId: s.id, tasks: [] };
         const rootTasks = tasksWithAssignees.filter(t => t.subcategory_id === s.id && !t.parent_id);
-        subMap[s.category_id].push({ ...s, tasks: rootTasks.map(t => ({ ...t, children: buildTaskTree(tasksWithAssignees, t.id) })) });
+        subMap[s.category_id].tasks.push(...rootTasks.map(t => ({ ...t, children: buildTaskTree(tasksWithAssignees, t.id) })));
       });
+
       const catMap = {};
       (catsRes.data || []).forEach(c => {
         if (!catMap[c.show_id]) catMap[c.show_id] = [];
-        catMap[c.show_id].push({ ...c, items: subMap[c.id] || [] });
+        const sub = subMap[c.id] || { _subId: null, tasks: [] };
+        catMap[c.show_id].push({ ...c, tasks: sub.tasks, _subId: sub._subId });
       });
       setShows((showsRes.data || []).map(s => ({ ...s, categories: catMap[s.id] || [] })));
       setMembers(membersRes.data || []);
@@ -321,13 +265,11 @@ export default function App() {
         for (let ci = 0; ci < LOAD_IN_TEMPLATE.length; ci++) {
           const cat = LOAD_IN_TEMPLATE[ci];
           const { data: catRow } = await supabase.from('categories').insert({ show_id: show.id, title: cat.title, sort_order: ci }).select().single();
-          for (let ii = 0; ii < cat.items.length; ii++) {
-            const item = cat.items[ii];
-            const { data: subRow } = await supabase.from('subcategories').insert({ category_id: catRow.id, title: item.title, sort_order: ii }).select().single();
-            for (let ti = 0; ti < item.tasks.length; ti++) {
-              const task = item.tasks[ti];
-              await supabase.from('tasks').insert({ subcategory_id: subRow.id, title: task.title, notes: task.notes || '', sort_order: ti });
-            }
+          // One hidden subcategory per category holds all template tasks
+          const { data: subRow } = await supabase.from('subcategories').insert({ category_id: catRow.id, title: '_tasks', sort_order: 0 }).select().single();
+          for (let ti = 0; ti < cat.tasks.length; ti++) {
+            const task = cat.tasks[ti];
+            await supabase.from('tasks').insert({ subcategory_id: subRow.id, title: task.title, notes: task.notes || '', sort_order: ti });
           }
         }
       }
@@ -350,33 +292,29 @@ export default function App() {
   const createCategory = async (showId, title) => {
     await withSaving(async () => {
       const { data: cat } = await supabase.from('categories').insert({ show_id: showId, title, sort_order: 999 }).select().single();
-      setShows(prev => prev.map(s => s.id === showId ? { ...s, categories: [...s.categories, { ...cat, items: [] }] } : s));
+      setShows(prev => prev.map(s => s.id === showId ? { ...s, categories: [...s.categories, { ...cat, tasks: [], _subId: null }] } : s));
     });
   };
   const deleteCategory = async (catId) => {
     await withSaving(async () => { await supabase.from('categories').delete().eq('id', catId); await loadAll(); });
   };
 
-  // ── Subcategory CRUD ───────────────────────────────────────────────────────
-  const createSubcategory = async (catId, title) => {
-    await withSaving(async () => {
-      const { data: sub } = await supabase.from('subcategories').insert({ category_id: catId, title, sort_order: 999 }).select().single();
-      setShows(prev => prev.map(s => ({ ...s, categories: s.categories.map(c => c.id === catId ? { ...c, items: [...c.items, { ...sub, tasks: [] }] } : c) })));
-    });
-  };
-  const deleteSubcategory = async (subId) => {
-    await withSaving(async () => { await supabase.from('subcategories').delete().eq('id', subId); await loadAll(); });
-  };
-
   // ── Task CRUD ──────────────────────────────────────────────────────────────
-  const createTask = async (subId, form) => {
+  // Tasks live directly under a category. We auto-manage one hidden subcategory per category as the DB container.
+  const createTask = async (catId, form) => {
     await withSaving(async () => {
+      const cat = shows.flatMap(s => s.categories).find(c => c.id === catId);
+      let subId = cat?._subId;
+      if (!subId) {
+        const { data: sub } = await supabase.from('subcategories').insert({ category_id: catId, title: '_tasks', sort_order: 0 }).select().single();
+        subId = sub.id;
+      }
       const { data: task } = await supabase.from('tasks').insert({ subcategory_id: subId, title: form.title, notes: form.notes || '', deadline: form.deadline || null, priority: form.priority || 'medium', sort_order: 999 }).select().single();
       if (form.assignees?.length) {
         await supabase.from('task_assignees').insert(form.assignees.map(mid => ({ task_id: task.id, member_id: mid })));
       }
       const newTask = { ...task, assignees: form.assignees || [], children: [] };
-      setShows(prev => prev.map(s => ({ ...s, categories: s.categories.map(c => ({ ...c, items: c.items.map(i => i.id === subId ? { ...i, tasks: [...i.tasks, newTask] } : i) })) })));
+      setShows(prev => prev.map(s => ({ ...s, categories: s.categories.map(c => c.id === catId ? { ...c, tasks: [...c.tasks, newTask], _subId: subId } : c) })));
     });
   };
   const updateTask = async (taskId, form) => {
@@ -386,7 +324,7 @@ export default function App() {
       if (form.assignees?.length) {
         await supabase.from('task_assignees').insert(form.assignees.map(mid => ({ task_id: taskId, member_id: mid })));
       }
-      setShows(prev => prev.map(s => ({ ...s, categories: s.categories.map(c => ({ ...c, items: c.items.map(i => ({ ...i, tasks: updateTaskInTree(i.tasks, taskId, { title: form.title, notes: form.notes || '', deadline: form.deadline || null, priority: form.priority || 'medium', assignees: form.assignees || [] }) })) })) })));
+      setShows(prev => prev.map(s => ({ ...s, categories: s.categories.map(c => ({ ...c, tasks: updateTaskInTree(c.tasks, taskId, { title: form.title, notes: form.notes || '', deadline: form.deadline || null, priority: form.priority || 'medium', assignees: form.assignees || [] }) })) })));
     });
   };
   const createSubtask = async (parentId, form) => {
@@ -396,7 +334,7 @@ export default function App() {
         await supabase.from('task_assignees').insert(form.assignees.map(mid => ({ task_id: task.id, member_id: mid })));
       }
       const newTask = { ...task, assignees: form.assignees || [], children: [] };
-      setShows(prev => prev.map(s => ({ ...s, categories: s.categories.map(c => ({ ...c, items: c.items.map(i => ({ ...i, tasks: addChildToTask(i.tasks, parentId, newTask) })) })) })));
+      setShows(prev => prev.map(s => ({ ...s, categories: s.categories.map(c => ({ ...c, tasks: addChildToTask(c.tasks, parentId, newTask) })) })));
     });
   };
   const toggleTaskAssignee = async (taskId, memberId, currentAssignees) => {
@@ -407,40 +345,36 @@ export default function App() {
     if (newAssignees.length) {
       await supabase.from('task_assignees').insert(newAssignees.map(mid => ({ task_id: taskId, member_id: mid })));
     }
-    setShows(prev => prev.map(s => ({ ...s, categories: s.categories.map(c => ({ ...c, items: c.items.map(i => ({ ...i, tasks: updateTaskInTree(i.tasks, taskId, { assignees: newAssignees }) })) })) })));
-  };
-  const toggleSubcategory = async (subId, current) => {
-    await supabase.from('subcategories').update({ done: !current }).eq('id', subId);
-    setShows(prev => prev.map(s => ({ ...s, categories: s.categories.map(c => ({ ...c, items: c.items.map(i => i.id === subId ? { ...i, done: !current } : i) })) })));
-  };
-  const toggleAllSubTasks = async (subId, targetDone) => {
-    const sub = shows.flatMap(s => s.categories.flatMap(c => c.items)).find(i => i.id === subId);
-    const taskIds = flattenTasks(sub?.tasks || []).map(t => t.id);
-    await Promise.all(taskIds.map(id => supabase.from('tasks').update({ done: targetDone }).eq('id', id)));
-    setShows(prev => prev.map(s => ({ ...s, categories: s.categories.map(c => ({ ...c, items: c.items.map(i => i.id === subId ? { ...i, tasks: markAllInTree(i.tasks, targetDone) } : i) })) })));
+    setShows(prev => prev.map(s => ({ ...s, categories: s.categories.map(c => ({ ...c, tasks: updateTaskInTree(c.tasks, taskId, { assignees: newAssignees }) })) })));
   };
   const toggleTask = async (taskId, current) => {
-    setShows(prev => prev.map(s => ({ ...s, categories: s.categories.map(c => ({ ...c, items: c.items.map(i => ({ ...i, tasks: updateTaskInTree(i.tasks, taskId, { done: !current }) })) })) })));
+    setShows(prev => prev.map(s => ({ ...s, categories: s.categories.map(c => ({ ...c, tasks: updateTaskInTree(c.tasks, taskId, { done: !current }) })) })));
     await supabase.from('tasks').update({ done: !current }).eq('id', taskId);
   };
   const deleteTask = async (taskId) => {
     await withSaving(async () => {
       await supabase.from('tasks').delete().eq('id', taskId);
-      setShows(prev => prev.map(s => ({ ...s, categories: s.categories.map(c => ({ ...c, items: c.items.map(i => ({ ...i, tasks: removeTaskFromTree(i.tasks, taskId) })) })) })));
+      setShows(prev => prev.map(s => ({ ...s, categories: s.categories.map(c => ({ ...c, tasks: removeTaskFromTree(c.tasks, taskId) })) })));
     });
   };
-  const reorderTasks = async (subId, fromId, toId) => {
+  const reorderTasks = async (catId, fromId, toId) => {
     if (fromId === toId) return;
-    const sub = shows.flatMap(s => s.categories.flatMap(c => c.items)).find(i => i.id === subId);
-    if (!sub) return;
-    const from = sub.tasks.findIndex(t => t.id === fromId);
-    const to = sub.tasks.findIndex(t => t.id === toId);
+    const cat = shows.flatMap(s => s.categories).find(c => c.id === catId);
+    if (!cat) return;
+    const from = cat.tasks.findIndex(t => t.id === fromId);
+    const to = cat.tasks.findIndex(t => t.id === toId);
     if (from === -1 || to === -1) return;
-    const newTasks = [...sub.tasks];
+    const newTasks = [...cat.tasks];
     const [moved] = newTasks.splice(from, 1);
     newTasks.splice(to, 0, moved);
-    setShows(prev => prev.map(s => ({ ...s, categories: s.categories.map(c => ({ ...c, items: c.items.map(i => i.id === subId ? { ...i, tasks: newTasks } : i) })) })));
+    setShows(prev => prev.map(s => ({ ...s, categories: s.categories.map(c => c.id === catId ? { ...c, tasks: newTasks } : c) })));
     await Promise.all(newTasks.map((t, idx) => supabase.from('tasks').update({ sort_order: idx }).eq('id', t.id)));
+  };
+  const toggleAllCatTasks = async (catId, targetDone) => {
+    const cat = shows.flatMap(s => s.categories).find(c => c.id === catId);
+    const taskIds = flattenTasks(cat?.tasks || []).map(t => t.id);
+    await Promise.all(taskIds.map(id => supabase.from('tasks').update({ done: targetDone }).eq('id', id)));
+    setShows(prev => prev.map(s => ({ ...s, categories: s.categories.map(c => c.id === catId ? { ...c, tasks: markAllInTree(c.tasks, targetDone) } : c) })));
   };
 
   // ── Member CRUD ────────────────────────────────────────────────────────────
@@ -457,13 +391,13 @@ export default function App() {
     });
   };
 
-  // ── All tasks flat list ────────────────────────────────────────────────────
+  // ── All tasks flat list (for To-Do view) ──────────────────────────────────
   const allTasks = () => {
     const out = [];
-    shows.forEach(s => s.categories.forEach(c => c.items.forEach(i => {
-      const ctx = { showId: s.id, showTitle: s.title, showColor: s.color, catTitle: c.title, itemTitle: i.title };
-      flattenTasks(i.tasks).forEach(t => out.push({ ...t, ...ctx }));
-    })));
+    shows.forEach(s => s.categories.forEach(c => {
+      const ctx = { showId: s.id, showTitle: s.title, showColor: s.color, catTitle: c.title };
+      flattenTasks(c.tasks).forEach(t => out.push({ ...t, ...ctx }));
+    }));
     return out;
   };
   const filteredTodo = () => {
@@ -500,20 +434,16 @@ export default function App() {
         {view === 'show' && activeShow && (
           <ShowDetailView show={activeShow} members={members} getMember={getMember}
             expandedCats={expandedCats} setExpandedCats={setExpandedCats}
-            expandedItems={expandedItems} setExpandedItems={setExpandedItems}
             onBack={() => setView('shows')}
             onDelete={() => askConfirm(`Delete "${activeShow.title}"?`, () => deleteShow(activeShow.id))}
             onAddCategory={(title) => createCategory(activeShow.id, title)}
             onDeleteCategory={(catId, title) => askConfirm(`Delete category "${title}" and all tasks?`, () => deleteCategory(catId))}
-            onAddSub={(catId, title) => createSubcategory(catId, title)}
-            onDeleteSub={(subId, title) => askConfirm(`Delete subcategory "${title}" and all tasks?`, () => deleteSubcategory(subId))}
-            onToggleSub={toggleSubcategory}
-            onToggleAllSubTasks={toggleAllSubTasks}
-            onToggleAssignee={toggleTaskAssignee}
-            onAddTask={(subId) => setModal({ type: 'addTask', subId })}
+            onToggleAllCatTasks={toggleAllCatTasks}
+            onAddTask={(catId) => setModal({ type: 'addTask', catId })}
             onAddSubtask={(parentId) => setModal({ type: 'addSubtask', parentId })}
             onEditTask={(task) => setModal({ type: 'editTask', task })}
             onToggleTask={toggleTask}
+            onToggleAssignee={toggleTaskAssignee}
             onDeleteTask={(taskId, title) => askConfirm(`Delete task "${title}"?`, () => deleteTask(taskId))}
             onReorderTasks={reorderTasks}
           />
@@ -529,7 +459,7 @@ export default function App() {
       {/* Modals */}
       {modal?.type === 'addShow' && <AddShowModal onClose={() => setModal(null)} onSave={createShow} />}
       {modal?.type === 'members' && <MembersModal members={members} onClose={() => setModal(null)} onAdd={createMember} onDelete={(id) => askConfirm('Remove team member? They will be unassigned from all tasks.', () => deleteMember(id))} />}
-      {modal?.type === 'addTask' && <TaskModal title="New Task" members={members} onClose={() => setModal(null)} onSave={(form) => createTask(modal.subId, form)} />}
+      {modal?.type === 'addTask' && <TaskModal title="New Task" members={members} onClose={() => setModal(null)} onSave={(form) => createTask(modal.catId, form)} />}
       {modal?.type === 'addSubtask' && <TaskModal title="New Subtask" members={members} onClose={() => setModal(null)} onSave={(form) => createSubtask(modal.parentId, form)} />}
       {modal?.type === 'editTask' && <TaskModal title="Edit Task" members={members} initial={modal.task} onClose={() => setModal(null)} onSave={(form) => updateTask(modal.task.id, form)} />}
       {confirm && <ConfirmModal message={confirm.message} onConfirm={confirm.onConfirm} onClose={() => setConfirm(null)} />}
@@ -547,9 +477,9 @@ function ShowsView({ shows, onNew, onOpen, onDelete }) {
       </div>
       <div className="grid gap-4 sm:grid-cols-2">
         {shows.map(s => {
-          const allT = s.categories.flatMap(c => c.items.flatMap(subUnits));
+          const allT = s.categories.flatMap(c => flattenTasks(c.tasks));
           const pct = calcProgress(allT);
-          const overdueCount = s.categories.flatMap(c => c.items.flatMap(i => flattenTasks(i.tasks))).filter(t => !t.done && isOverdue(t.deadline)).length;
+          const overdueCount = allT.filter(t => !t.done && isOverdue(t.deadline)).length;
           return (
             <div key={s.id} className="bg-gray-800 rounded-xl p-5 border border-gray-700 hover:border-indigo-500 transition-colors group relative">
               <button onClick={e => { e.stopPropagation(); onDelete(s.id, s.title); }} className="absolute top-3 right-3 w-7 h-7 rounded-lg flex items-center justify-center text-gray-600 hover:text-red-400 hover:bg-gray-700 opacity-0 group-hover:opacity-100">🗑</button>
@@ -580,14 +510,14 @@ function ShowsView({ shows, onNew, onOpen, onDelete }) {
 }
 
 // ─── Show Detail View ─────────────────────────────────────────────────────────
-function ShowDetailView({ show, members, getMember, expandedCats, setExpandedCats, expandedItems, setExpandedItems, onBack, onDelete, onAddCategory, onDeleteCategory, onAddSub, onDeleteSub, onToggleSub, onToggleAllSubTasks, onAddTask, onAddSubtask, onEditTask, onToggleTask, onToggleAssignee, onDeleteTask, onReorderTasks }) {
+function ShowDetailView({ show, members, getMember, expandedCats, setExpandedCats, onBack, onDelete, onAddCategory, onDeleteCategory, onToggleAllCatTasks, onAddTask, onAddSubtask, onEditTask, onToggleTask, onToggleAssignee, onDeleteTask, onReorderTasks }) {
   const [newCatName, setNewCatName] = useState('');
   const [expandedNotes, setExpandedNotes] = useState({});
   const [dragTaskId, setDragTaskId] = useState(null);
-  const [dragSubId, setDragSubId] = useState(null);
+  const [dragCatId, setDragCatId] = useState(null);
   const [dragOverTaskId, setDragOverTaskId] = useState(null);
-  const allT = show.categories.flatMap(c => c.items.flatMap(subUnits));
-  const doneTasks = show.categories.flatMap(c => c.items.flatMap(i => flattenTasks(i.tasks)));
+
+  const allT = show.categories.flatMap(c => flattenTasks(c.tasks));
   const pct = calcProgress(allT);
 
   return (
@@ -600,75 +530,59 @@ function ShowDetailView({ show, members, getMember, expandedCats, setExpandedCat
           <button onClick={onDelete} className="bg-gray-700 hover:bg-red-700 text-gray-300 hover:text-white px-3 py-1.5 rounded-lg text-sm transition-colors">🗑 Delete</button>
         </div>
       </div>
-      <div className="mb-6 mt-3"><ProgressBar pct={pct} size="lg" /><div className="text-xs text-gray-500 mt-1">{doneTasks.filter(t => t.done).length} / {doneTasks.length} tasks</div></div>
+      <div className="mb-6 mt-3"><ProgressBar pct={pct} size="lg" /><div className="text-xs text-gray-500 mt-1">{allT.filter(t => t.done).length} / {allT.length} tasks</div></div>
 
       <div className="space-y-3">
         {show.categories.map(cat => {
-          const catTasks = cat.items.flatMap(subUnits);
-          const catPct = calcProgress(catTasks);
+          const catT = flattenTasks(cat.tasks);
+          const catPct = calcProgress(catT);
+          const allDone = catT.length > 0 && catT.every(t => t.done);
+          const anyDone = catT.some(t => t.done);
           const open = expandedCats[cat.id] !== false;
           return (
             <div key={cat.id} className="bg-gray-800 rounded-xl border border-gray-700 overflow-hidden">
               <div className="flex items-center gap-3 p-4">
-                <button className="text-gray-400 text-sm w-4" onClick={() => setExpandedCats(p => ({ ...p, [cat.id]: !open }))}>{open ? '▾' : '▸'}</button>
+                {cat.tasks.length === 0
+                  ? <span className="w-5 h-5 flex-shrink-0" />
+                  : <button onClick={() => onToggleAllCatTasks(cat.id, !allDone)} className={`w-5 h-5 rounded flex-shrink-0 border-2 flex items-center justify-center transition-colors ${allDone ? 'bg-green-600 border-green-600' : anyDone ? 'border-indigo-400 bg-indigo-900/40' : 'border-gray-500 hover:border-indigo-400'}`}>
+                      {allDone ? <span className="text-white text-xs">✓</span> : anyDone ? <span className="text-indigo-400 text-xs">–</span> : null}
+                    </button>
+                }
+                <button className="text-gray-400 text-sm w-4 flex-shrink-0" onClick={() => setExpandedCats(p => ({ ...p, [cat.id]: !open }))}>{open ? '▾' : '▸'}</button>
                 <span className="font-bold text-white flex-1 cursor-pointer" onClick={() => setExpandedCats(p => ({ ...p, [cat.id]: !open }))}>{cat.title}</span>
-                <div className="w-32 hidden sm:block"><ProgressBar pct={catPct} size="sm" /></div>
+                {catT.length > 0 && <><div className="w-32 hidden sm:block"><ProgressBar pct={catPct} size="sm" /></div><Badge color={catPct === 100 ? 'green' : 'gray'}>{catT.filter(t => t.done).length}/{catT.length}</Badge></>}
                 <button onClick={() => onDeleteCategory(cat.id, cat.title)} className="text-gray-600 hover:text-red-400 px-1 py-1 rounded hover:bg-gray-700">🗑</button>
               </div>
               {open && (
-                <div className="border-t border-gray-700 divide-y divide-gray-700">
-                  {cat.items.map(item => {
-                    const flatItemTasks = flattenTasks(item.tasks);
-                    const allDone = flatItemTasks.length > 0 && flatItemTasks.every(t => t.done);
-                    const anyDone = flatItemTasks.some(t => t.done);
-                    const itemPct = calcProgress(flatItemTasks);
-                    const itemOpen = expandedItems[item.id] !== false;
-                    return (
-                      <div key={item.id}>
-                        <div className="flex items-center gap-3 px-6 py-3 bg-gray-800">
-                          {item.tasks.length === 0
-                            ? <button onClick={() => onToggleSub(item.id, item.done)} className={`w-5 h-5 rounded flex-shrink-0 border-2 flex items-center justify-center transition-colors ${item.done ? 'bg-green-600 border-green-600' : 'border-gray-500 hover:border-indigo-400'}`}>{item.done && <span className="text-white text-xs">✓</span>}</button>
-                            : <button onClick={() => onToggleAllSubTasks(item.id, !allDone)} className={`w-5 h-5 rounded flex-shrink-0 border-2 flex items-center justify-center transition-colors ${allDone ? 'bg-green-600 border-green-600' : anyDone ? 'border-indigo-400 bg-indigo-900/40' : 'border-gray-500 hover:border-indigo-400'}`}>{allDone ? <span className="text-white text-xs">✓</span> : anyDone ? <span className="text-indigo-400 text-xs">–</span> : null}</button>
-                          }
-                          <button className="text-gray-500 text-xs w-3" onClick={() => setExpandedItems(p => ({ ...p, [item.id]: !itemOpen }))}>{itemOpen ? '▾' : '▸'}</button>
-                          <span className={`font-medium flex-1 cursor-pointer ${item.tasks.length === 0 && item.done ? 'line-through text-gray-500' : 'text-gray-200'}`} onClick={() => setExpandedItems(p => ({ ...p, [item.id]: !itemOpen }))}>{item.title}</span>
-                          {flatItemTasks.length > 0 && <><div className="w-24 hidden sm:block"><ProgressBar pct={itemPct} size="sm" /></div><Badge color={itemPct === 100 ? 'green' : 'gray'}>{flatItemTasks.filter(t => t.done).length}/{flatItemTasks.length}</Badge></>}
-                          <button onClick={() => onAddTask(item.id)} className="text-gray-500 hover:text-indigo-400 text-sm px-2 py-1 rounded hover:bg-gray-700">+ Task</button>
-                          <button onClick={() => onDeleteSub(item.id, item.title)} className="text-gray-600 hover:text-red-400 px-1 py-1 rounded hover:bg-gray-700">🗑</button>
-                        </div>
-                        {itemOpen && (
-                          <div className="pb-2 pt-1" style={{ backgroundColor: '#1a1f2e' }}>
-                            {item.tasks.map(task => (
-                              <div key={task.id}
-                                draggable
-                                onDragStart={() => { setDragTaskId(task.id); setDragSubId(item.id); }}
-                                onDragEnd={() => { setDragTaskId(null); setDragSubId(null); setDragOverTaskId(null); }}
-                                onDragOver={e => { e.preventDefault(); setDragOverTaskId(task.id); }}
-                                onDragLeave={() => setDragOverTaskId(p => p === task.id ? null : p)}
-                                onDrop={e => { e.preventDefault(); if (dragTaskId && dragSubId === item.id) onReorderTasks(item.id, dragTaskId, task.id); setDragTaskId(null); setDragSubId(null); setDragOverTaskId(null); }}
-                                style={{ opacity: dragTaskId === task.id ? 0.4 : 1, borderTop: dragOverTaskId === task.id && dragTaskId !== task.id && dragSubId === item.id ? '2px solid #6366f1' : '2px solid transparent' }}>
-                                <TaskRow task={task} depth={0}
-                                  members={members} getMember={getMember}
-                                  onToggle={onToggleTask} onToggleAssignee={onToggleAssignee}
-                                  onEditTask={onEditTask} onDeleteTask={onDeleteTask}
-                                  onAddSubtask={onAddSubtask}
-                                  expandedNotes={expandedNotes} setExpandedNotes={setExpandedNotes} />
-                              </div>
-                            ))}
-                            {item.tasks.length === 0 && <p className="text-gray-600 text-xs py-2 px-9">No tasks yet.</p>}
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-                  {/* Add subcategory inline */}
-                  <AddSubcategoryInline catId={cat.id} onAdd={onAddSub} />
+                <div className="border-t border-gray-700" style={{ backgroundColor: '#1a1f2e' }}>
+                  {cat.tasks.map(task => (
+                    <div key={task.id}
+                      draggable
+                      onDragStart={() => { setDragTaskId(task.id); setDragCatId(cat.id); }}
+                      onDragEnd={() => { setDragTaskId(null); setDragCatId(null); setDragOverTaskId(null); }}
+                      onDragOver={e => { e.preventDefault(); setDragOverTaskId(task.id); }}
+                      onDragLeave={() => setDragOverTaskId(p => p === task.id ? null : p)}
+                      onDrop={e => { e.preventDefault(); if (dragTaskId && dragCatId === cat.id) onReorderTasks(cat.id, dragTaskId, task.id); setDragTaskId(null); setDragCatId(null); setDragOverTaskId(null); }}
+                      style={{ opacity: dragTaskId === task.id ? 0.4 : 1, borderTop: dragOverTaskId === task.id && dragTaskId !== task.id && dragCatId === cat.id ? '2px solid #6366f1' : '2px solid transparent' }}>
+                      <TaskRow task={task} depth={0}
+                        members={members} getMember={getMember}
+                        onToggle={onToggleTask} onToggleAssignee={onToggleAssignee}
+                        onEditTask={onEditTask} onDeleteTask={onDeleteTask}
+                        onAddSubtask={onAddSubtask}
+                        expandedNotes={expandedNotes} setExpandedNotes={setExpandedNotes} />
+                    </div>
+                  ))}
+                  {cat.tasks.length === 0 && <p className="text-gray-600 text-xs py-3 px-5">No tasks yet — add one below.</p>}
+                  <div className="px-4 py-2 border-t border-gray-700/50">
+                    <button onClick={() => onAddTask(cat.id)} className="text-gray-500 hover:text-indigo-400 text-sm px-2 py-1 rounded hover:bg-gray-700/50 transition-colors">+ Add Task</button>
+                  </div>
                 </div>
               )}
             </div>
           );
         })}
       </div>
+
       {/* Add category */}
       <div className="mt-4 flex gap-2">
         <input value={newCatName} onChange={e => setNewCatName(e.target.value)}
@@ -682,6 +596,7 @@ function ShowDetailView({ show, members, getMember, expandedCats, setExpandedCat
   );
 }
 
+// ─── Task Row ─────────────────────────────────────────────────────────────────
 function TaskRow({ task, depth, members, getMember, onToggle, onToggleAssignee, onEditTask, onDeleteTask, onAddSubtask, expandedNotes, setExpandedNotes }) {
   const [childrenOpen, setChildrenOpen] = useState(true);
   const hasChildren = task.children?.length > 0;
@@ -718,19 +633,6 @@ function TaskRow({ task, depth, members, getMember, onToggle, onToggleAssignee, 
           onAddSubtask={onAddSubtask}
           expandedNotes={expandedNotes} setExpandedNotes={setExpandedNotes} />
       ))}
-    </div>
-  );
-}
-
-function AddSubcategoryInline({ catId, onAdd }) {
-  const [val, setVal] = useState('');
-  return (
-    <div className="px-6 py-2 flex gap-2">
-      <input value={val} onChange={e => setVal(e.target.value)}
-        onKeyDown={e => { if (e.key === 'Enter' && val.trim()) { onAdd(catId, val.trim()); setVal(''); } }}
-        placeholder="Add subcategory…"
-        className="flex-1 bg-gray-900 border border-gray-700 rounded-lg px-3 py-1.5 text-white text-xs focus:outline-none focus:border-indigo-500" />
-      <button onClick={() => { if (val.trim()) { onAdd(catId, val.trim()); setVal(''); } }} className="text-gray-500 hover:text-indigo-400 text-xs px-2">+ Sub</button>
     </div>
   );
 }
@@ -784,7 +686,7 @@ function TodoView({ tasks, members, getMember, filterMember, setFilterMember, fi
               {g.tasks.map(task => (
                 <div key={task.id} className={`flex items-center gap-3 px-4 py-3 ${task.done ? 'opacity-60' : ''}`}>
                   <button onClick={() => onToggle(task.id, task.done)} className={`w-5 h-5 rounded flex-shrink-0 border-2 flex items-center justify-center ${task.done ? 'bg-green-600 border-green-600' : 'border-gray-600 hover:border-indigo-400'}`}>{task.done && <span className="text-white text-xs">✓</span>}</button>
-                  <div className="flex-1 min-w-0"><div className={`text-sm ${task.done ? 'line-through text-gray-500' : 'text-gray-200'}`}>{task.title}</div><div className="text-xs text-gray-500">{task.catTitle} › {task.itemTitle}</div></div>
+                  <div className="flex-1 min-w-0"><div className={`text-sm ${task.done ? 'line-through text-gray-500' : 'text-gray-200'}`}>{task.title}</div><div className="text-xs text-gray-500">{task.catTitle}</div></div>
                   <PriorityBadge priority={task.priority} />
                   <DeadlineBadge deadline={task.deadline} done={task.done} />
                   <div className="flex -space-x-1">{task.assignees.map(aid => { const m = getMember(aid); return m ? <Avatar key={aid} member={m} /> : null; })}</div>
@@ -799,7 +701,7 @@ function TodoView({ tasks, members, getMember, filterMember, setFilterMember, fi
 }
 
 // ─── Add Show Modal ───────────────────────────────────────────────────────────
-const TEMPLATE_SUMMARY = `${LOAD_IN_TEMPLATE.length} categories · ${LOAD_IN_TEMPLATE.reduce((a,c)=>a+c.items.length,0)} subcategories · ${LOAD_IN_TEMPLATE.reduce((a,c)=>a+c.items.reduce((b,i)=>b+i.tasks.length,0),0)} tasks`;
+const TEMPLATE_SUMMARY = `${LOAD_IN_TEMPLATE.length} categories · ${LOAD_IN_TEMPLATE.reduce((a, c) => a + c.tasks.length, 0)} tasks`;
 
 function AddShowModal({ onClose, onSave }) {
   const [form, setForm] = useState({ title: '', venue: '', openingNight: '', color: SHOW_COLORS[0] });
