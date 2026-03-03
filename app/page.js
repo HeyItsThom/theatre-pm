@@ -658,7 +658,7 @@ function AddShowModal({ onClose, onSave }) {
           <div className="flex items-start gap-3">
             <div className={`w-5 h-5 rounded-full border-2 flex-shrink-0 mt-0.5 flex items-center justify-center ${useTemplate ? 'border-indigo-400 bg-indigo-500' : 'border-gray-500'}`}>{useTemplate && <div className="w-2 h-2 rounded-full bg-white" />}</div>
             <div><div className="flex items-center gap-2 flex-wrap"><span className="text-white font-semibold text-sm">🎭 Load-In Template</span><span className="bg-indigo-700 text-indigo-200 text-xs px-2 py-0.5 rounded">Recommended</span></div>
-              <p className="text-gray-400 text-xs mt-1">Full production checklist — {TEMPLATE_SUMMARY}. Delete what you don't need.</p></div>
+              <p className="text-gray-400 text-xs mt-1">Full production checklist — {TEMPLATE_SUMMARY}. Delete what you don&apos;t need.</p></div>
           </div>
         </div>
         <div className={`rounded-xl border-2 p-3 cursor-pointer ${!useTemplate ? 'border-indigo-500 bg-indigo-900/20' : 'border-gray-600 hover:border-gray-500'}`} onClick={() => setUseTemplate(false)}>
