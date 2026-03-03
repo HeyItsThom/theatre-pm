@@ -171,6 +171,8 @@ const flattenTasks = (tasks) => {
   walk(tasks);
   return out;
 };
+// Flatten tasks from a subcategory; if it has no tasks, treat it as one unit using its own done flag
+const subUnits = (item) => { const t = flattenTasks(item.tasks); return t.length ? t : [{ done: !!item.done }]; };
 const buildTaskTree = (allTasks, parentId) =>
   allTasks.filter(t => t.parent_id === parentId).map(t => ({ ...t, children: buildTaskTree(allTasks, t.id) }));
 const addChildToTask = (tasks, parentId, child) =>
@@ -418,14 +420,27 @@ export default function App() {
     setShows(prev => prev.map(s => ({ ...s, categories: s.categories.map(c => ({ ...c, items: c.items.map(i => i.id === subId ? { ...i, tasks: markAllInTree(i.tasks, targetDone) } : i) })) })));
   };
   const toggleTask = async (taskId, current) => {
-    await supabase.from('tasks').update({ done: !current }).eq('id', taskId);
     setShows(prev => prev.map(s => ({ ...s, categories: s.categories.map(c => ({ ...c, items: c.items.map(i => ({ ...i, tasks: updateTaskInTree(i.tasks, taskId, { done: !current }) })) })) })));
+    await supabase.from('tasks').update({ done: !current }).eq('id', taskId);
   };
   const deleteTask = async (taskId) => {
     await withSaving(async () => {
       await supabase.from('tasks').delete().eq('id', taskId);
       setShows(prev => prev.map(s => ({ ...s, categories: s.categories.map(c => ({ ...c, items: c.items.map(i => ({ ...i, tasks: removeTaskFromTree(i.tasks, taskId) })) })) })));
     });
+  };
+  const reorderTasks = async (subId, fromId, toId) => {
+    if (fromId === toId) return;
+    const sub = shows.flatMap(s => s.categories.flatMap(c => c.items)).find(i => i.id === subId);
+    if (!sub) return;
+    const from = sub.tasks.findIndex(t => t.id === fromId);
+    const to = sub.tasks.findIndex(t => t.id === toId);
+    if (from === -1 || to === -1) return;
+    const newTasks = [...sub.tasks];
+    const [moved] = newTasks.splice(from, 1);
+    newTasks.splice(to, 0, moved);
+    setShows(prev => prev.map(s => ({ ...s, categories: s.categories.map(c => ({ ...c, items: c.items.map(i => i.id === subId ? { ...i, tasks: newTasks } : i) })) })));
+    await Promise.all(newTasks.map((t, idx) => supabase.from('tasks').update({ sort_order: idx }).eq('id', t.id)));
   };
 
   // ── Member CRUD ────────────────────────────────────────────────────────────
@@ -500,6 +515,7 @@ export default function App() {
             onEditTask={(task) => setModal({ type: 'editTask', task })}
             onToggleTask={toggleTask}
             onDeleteTask={(taskId, title) => askConfirm(`Delete task "${title}"?`, () => deleteTask(taskId))}
+            onReorderTasks={reorderTasks}
           />
         )}
         {view === 'todo' && (
@@ -531,9 +547,9 @@ function ShowsView({ shows, onNew, onOpen, onDelete }) {
       </div>
       <div className="grid gap-4 sm:grid-cols-2">
         {shows.map(s => {
-          const allT = s.categories.flatMap(c => c.items.flatMap(i => flattenTasks(i.tasks)));
+          const allT = s.categories.flatMap(c => c.items.flatMap(subUnits));
           const pct = calcProgress(allT);
-          const overdueCount = allT.filter(t => !t.done && isOverdue(t.deadline)).length;
+          const overdueCount = s.categories.flatMap(c => c.items.flatMap(i => flattenTasks(i.tasks))).filter(t => !t.done && isOverdue(t.deadline)).length;
           return (
             <div key={s.id} className="bg-gray-800 rounded-xl p-5 border border-gray-700 hover:border-indigo-500 transition-colors group relative">
               <button onClick={e => { e.stopPropagation(); onDelete(s.id, s.title); }} className="absolute top-3 right-3 w-7 h-7 rounded-lg flex items-center justify-center text-gray-600 hover:text-red-400 hover:bg-gray-700 opacity-0 group-hover:opacity-100">🗑</button>
@@ -564,10 +580,14 @@ function ShowsView({ shows, onNew, onOpen, onDelete }) {
 }
 
 // ─── Show Detail View ─────────────────────────────────────────────────────────
-function ShowDetailView({ show, members, getMember, expandedCats, setExpandedCats, expandedItems, setExpandedItems, onBack, onDelete, onAddCategory, onDeleteCategory, onAddSub, onDeleteSub, onToggleSub, onToggleAllSubTasks, onAddTask, onAddSubtask, onEditTask, onToggleTask, onToggleAssignee, onDeleteTask }) {
+function ShowDetailView({ show, members, getMember, expandedCats, setExpandedCats, expandedItems, setExpandedItems, onBack, onDelete, onAddCategory, onDeleteCategory, onAddSub, onDeleteSub, onToggleSub, onToggleAllSubTasks, onAddTask, onAddSubtask, onEditTask, onToggleTask, onToggleAssignee, onDeleteTask, onReorderTasks }) {
   const [newCatName, setNewCatName] = useState('');
   const [expandedNotes, setExpandedNotes] = useState({});
-  const allT = show.categories.flatMap(c => c.items.flatMap(i => flattenTasks(i.tasks)));
+  const [dragTaskId, setDragTaskId] = useState(null);
+  const [dragSubId, setDragSubId] = useState(null);
+  const [dragOverTaskId, setDragOverTaskId] = useState(null);
+  const allT = show.categories.flatMap(c => c.items.flatMap(subUnits));
+  const doneTasks = show.categories.flatMap(c => c.items.flatMap(i => flattenTasks(i.tasks)));
   const pct = calcProgress(allT);
 
   return (
@@ -580,11 +600,11 @@ function ShowDetailView({ show, members, getMember, expandedCats, setExpandedCat
           <button onClick={onDelete} className="bg-gray-700 hover:bg-red-700 text-gray-300 hover:text-white px-3 py-1.5 rounded-lg text-sm transition-colors">🗑 Delete</button>
         </div>
       </div>
-      <div className="mb-6 mt-3"><ProgressBar pct={pct} size="lg" /><div className="text-xs text-gray-500 mt-1">{allT.filter(t => t.done).length} / {allT.length} tasks</div></div>
+      <div className="mb-6 mt-3"><ProgressBar pct={pct} size="lg" /><div className="text-xs text-gray-500 mt-1">{doneTasks.filter(t => t.done).length} / {doneTasks.length} tasks</div></div>
 
       <div className="space-y-3">
         {show.categories.map(cat => {
-          const catTasks = cat.items.flatMap(i => flattenTasks(i.tasks));
+          const catTasks = cat.items.flatMap(subUnits);
           const catPct = calcProgress(catTasks);
           const open = expandedCats[cat.id] !== false;
           return (
@@ -619,12 +639,21 @@ function ShowDetailView({ show, members, getMember, expandedCats, setExpandedCat
                         {itemOpen && (
                           <div className="pb-2 pt-1" style={{ backgroundColor: '#1a1f2e' }}>
                             {item.tasks.map(task => (
-                              <TaskRow key={task.id} task={task} depth={0}
-                                members={members} getMember={getMember}
-                                onToggle={onToggleTask} onToggleAssignee={onToggleAssignee}
-                                onEditTask={onEditTask} onDeleteTask={onDeleteTask}
-                                onAddSubtask={onAddSubtask}
-                                expandedNotes={expandedNotes} setExpandedNotes={setExpandedNotes} />
+                              <div key={task.id}
+                                draggable
+                                onDragStart={() => { setDragTaskId(task.id); setDragSubId(item.id); }}
+                                onDragEnd={() => { setDragTaskId(null); setDragSubId(null); setDragOverTaskId(null); }}
+                                onDragOver={e => { e.preventDefault(); setDragOverTaskId(task.id); }}
+                                onDragLeave={() => setDragOverTaskId(p => p === task.id ? null : p)}
+                                onDrop={e => { e.preventDefault(); if (dragTaskId && dragSubId === item.id) onReorderTasks(item.id, dragTaskId, task.id); setDragTaskId(null); setDragSubId(null); setDragOverTaskId(null); }}
+                                style={{ opacity: dragTaskId === task.id ? 0.4 : 1, borderTop: dragOverTaskId === task.id && dragTaskId !== task.id && dragSubId === item.id ? '2px solid #6366f1' : '2px solid transparent' }}>
+                                <TaskRow task={task} depth={0}
+                                  members={members} getMember={getMember}
+                                  onToggle={onToggleTask} onToggleAssignee={onToggleAssignee}
+                                  onEditTask={onEditTask} onDeleteTask={onDeleteTask}
+                                  onAddSubtask={onAddSubtask}
+                                  expandedNotes={expandedNotes} setExpandedNotes={setExpandedNotes} />
+                              </div>
                             ))}
                             {item.tasks.length === 0 && <p className="text-gray-600 text-xs py-2 px-9">No tasks yet.</p>}
                           </div>
