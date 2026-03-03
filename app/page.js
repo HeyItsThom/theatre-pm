@@ -322,8 +322,8 @@ export default function App() {
   // ── Category CRUD ──────────────────────────────────────────────────────────
   const createCategory = async (showId, title) => {
     await withSaving(async () => {
-      await supabase.from('categories').insert({ show_id: showId, title, sort_order: 999 });
-      await loadAll();
+      const { data: cat } = await supabase.from('categories').insert({ show_id: showId, title, sort_order: 999 }).select().single();
+      setShows(prev => prev.map(s => s.id === showId ? { ...s, categories: [...s.categories, { ...cat, items: [] }] } : s));
     });
   };
   const deleteCategory = async (catId) => {
@@ -333,8 +333,8 @@ export default function App() {
   // ── Subcategory CRUD ───────────────────────────────────────────────────────
   const createSubcategory = async (catId, title) => {
     await withSaving(async () => {
-      await supabase.from('subcategories').insert({ category_id: catId, title, sort_order: 999 });
-      await loadAll();
+      const { data: sub } = await supabase.from('subcategories').insert({ category_id: catId, title, sort_order: 999 }).select().single();
+      setShows(prev => prev.map(s => ({ ...s, categories: s.categories.map(c => c.id === catId ? { ...c, items: [...c.items, { ...sub, tasks: [] }] } : c) })));
     });
   };
   const deleteSubcategory = async (subId) => {
@@ -348,7 +348,8 @@ export default function App() {
       if (form.assignees?.length) {
         await supabase.from('task_assignees').insert(form.assignees.map(mid => ({ task_id: task.id, member_id: mid })));
       }
-      await loadAll();
+      const newTask = { ...task, assignees: form.assignees || [] };
+      setShows(prev => prev.map(s => ({ ...s, categories: s.categories.map(c => ({ ...c, items: c.items.map(i => i.id === subId ? { ...i, tasks: [...i.tasks, newTask] } : i) })) })));
     });
   };
   const updateTask = async (taskId, form) => {
@@ -372,8 +373,8 @@ export default function App() {
   // ── Member CRUD ────────────────────────────────────────────────────────────
   const createMember = async (form) => {
     await withSaving(async () => {
-      await supabase.from('members').insert({ name: form.name, role: form.role, color: form.color });
-      await loadAll();
+      const { data: member } = await supabase.from('members').insert({ name: form.name, role: form.role, color: form.color }).select().single();
+      setMembers(prev => [...prev, member]);
     });
   };
   const deleteMember = async (memberId) => {
