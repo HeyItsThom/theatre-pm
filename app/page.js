@@ -369,18 +369,35 @@ export default function App() {
       setShows(prev => prev.map(s => ({ ...s, categories: s.categories.map(c => ({ ...c, tasks: removeTaskFromTree(c.tasks, taskId) })) })));
     });
   };
-  const reorderTasks = async (catId, fromId, toId) => {
-    if (fromId === toId) return;
+  // Move any task (root or nested) to the root of catId.
+  // position: 'before' | 'after' ref task, or 'end' (append) when refTaskId is null.
+  const moveToRoot = async (taskId, catId, refTaskId, position) => {
     const cat = shows.flatMap(s => s.categories).find(c => c.id === catId);
     if (!cat) return;
-    const from = cat.tasks.findIndex(t => t.id === fromId);
-    const to = cat.tasks.findIndex(t => t.id === toId);
-    if (from === -1 || to === -1) return;
-    const newTasks = [...cat.tasks];
-    const [moved] = newTasks.splice(from, 1);
-    newTasks.splice(to, 0, moved);
+    const { plucked, remaining } = pluckTask(cat.tasks, taskId);
+    if (!plucked) return;
+    let newTasks;
+    if (!refTaskId || position === 'end') {
+      newTasks = [...remaining, plucked];
+    } else {
+      const idx = remaining.findIndex(t => t.id === refTaskId);
+      if (idx === -1) {
+        newTasks = [...remaining, plucked];
+      } else if (position === 'before') {
+        newTasks = [...remaining.slice(0, idx), plucked, ...remaining.slice(idx)];
+      } else {
+        newTasks = [...remaining.slice(0, idx + 1), plucked, ...remaining.slice(idx + 1)];
+      }
+    }
     setShows(prev => prev.map(s => ({ ...s, categories: s.categories.map(c => c.id === catId ? { ...c, tasks: newTasks } : c) })));
-    await Promise.all(newTasks.map((t, idx) => supabase.from('tasks').update({ sort_order: idx }).eq('id', t.id)));
+    let subId = cat._subId;
+    if (!subId) {
+      const { data: sub } = await supabase.from('subcategories').insert({ category_id: catId, title: '_tasks', sort_order: 0 }).select().single();
+      subId = sub.id;
+      setShows(prev => prev.map(s => ({ ...s, categories: s.categories.map(c => c.id === catId ? { ...c, _subId: subId } : c) })));
+    }
+    await supabase.from('tasks').update({ parent_id: null, subcategory_id: subId }).eq('id', taskId);
+    await Promise.all(newTasks.map((t, i) => supabase.from('tasks').update({ sort_order: i }).eq('id', t.id)));
   };
   const nestTask = async (taskId, newParentId) => {
     setShows(prev => prev.map(s => ({
@@ -480,7 +497,7 @@ export default function App() {
             onToggleTask={toggleTask}
             onToggleAssignee={toggleTaskAssignee}
             onDeleteTask={(taskId, title) => askConfirm(`Delete task "${title}"?`, () => deleteTask(taskId))}
-            onReorderTasks={reorderTasks}
+            onMoveToRoot={moveToRoot}
             onNestTask={nestTask}
             onReorderCategories={(from, to) => reorderCategories(activeShow.id, from, to)}
           />
@@ -547,14 +564,15 @@ function ShowsView({ shows, onNew, onOpen, onDelete }) {
 }
 
 // ─── Show Detail View ─────────────────────────────────────────────────────────
-function ShowDetailView({ show, members, getMember, expandedCats, setExpandedCats, onBack, onDelete, onAddCategory, onDeleteCategory, onToggleAllCatTasks, onAddTask, onAddSubtask, onEditTask, onToggleTask, onToggleAssignee, onDeleteTask, onReorderTasks, onNestTask, onReorderCategories }) {
+function ShowDetailView({ show, members, getMember, expandedCats, setExpandedCats, onBack, onDelete, onAddCategory, onDeleteCategory, onToggleAllCatTasks, onAddTask, onAddSubtask, onEditTask, onToggleTask, onToggleAssignee, onDeleteTask, onMoveToRoot, onNestTask, onReorderCategories }) {
   const [newCatName, setNewCatName] = useState('');
   const [expandedNotes, setExpandedNotes] = useState({});
-  // Task drag state
+  // Task drag: 'before'|'nest'|'after' based on cursor position within target
   const [draggedTaskId, setDraggedTaskId] = useState(null);
   const [taskSrcCatId, setTaskSrcCatId] = useState(null);
   const [dragOverTaskId, setDragOverTaskId] = useState(null);
-  const [dragIntent, setDragIntent] = useState(null); // 'reorder' | 'nest'
+  const [dragIntent, setDragIntent] = useState(null);
+  const [dropBodyCatId, setDropBodyCatId] = useState(null); // category body drop zone
   // Category drag state
   const [draggedCatId, setDraggedCatId] = useState(null);
   const [dragOverCatId, setDragOverCatId] = useState(null);
@@ -562,7 +580,7 @@ function ShowDetailView({ show, members, getMember, expandedCats, setExpandedCat
   const allT = show.categories.flatMap(c => flattenTasks(c.tasks));
   const pct = calcProgress(allT);
 
-  const clearTaskDrag = () => { setDraggedTaskId(null); setTaskSrcCatId(null); setDragOverTaskId(null); setDragIntent(null); };
+  const clearTaskDrag = () => { setDraggedTaskId(null); setTaskSrcCatId(null); setDragOverTaskId(null); setDragIntent(null); setDropBodyCatId(null); };
   const clearCatDrag = () => { setDraggedCatId(null); setDragOverCatId(null); };
 
   return (
@@ -622,26 +640,28 @@ function ShowDetailView({ show, members, getMember, expandedCats, setExpandedCat
                         onDragOver={e => {
                           e.preventDefault(); e.stopPropagation();
                           if (!draggedTaskId) return;
+                          setDropBodyCatId(null);
                           setDragOverTaskId(task.id);
                           const rect = e.currentTarget.getBoundingClientRect();
                           const ratio = (e.clientY - rect.top) / rect.height;
-                          setDragIntent(ratio < 0.3 || ratio > 0.7 ? 'reorder' : 'nest');
+                          setDragIntent(ratio < 0.35 ? 'before' : ratio > 0.65 ? 'after' : 'nest');
                         }}
-                        onDragLeave={e => { if (!e.currentTarget.contains(e.relatedTarget)) { setDragOverTaskId(p => p === task.id ? null : p); } }}
+                        onDragLeave={e => { if (!e.currentTarget.contains(e.relatedTarget)) setDragOverTaskId(p => p === task.id ? null : p); }}
                         onDrop={e => {
                           e.preventDefault(); e.stopPropagation();
                           if (draggedTaskId && draggedTaskId !== task.id) {
-                            if (dragIntent === 'nest' || taskSrcCatId !== cat.id) {
+                            if (dragIntent === 'nest') {
                               onNestTask(draggedTaskId, task.id);
                             } else {
-                              onReorderTasks(cat.id, draggedTaskId, task.id);
+                              onMoveToRoot(draggedTaskId, cat.id, task.id, dragIntent);
                             }
                           }
                           clearTaskDrag();
                         }}
                         style={{
                           opacity: isTaskDragSrc ? 0.4 : 1,
-                          borderTop: isOver && dragIntent === 'reorder' ? '2px solid #6366f1' : '2px solid transparent',
+                          borderTop: isOver && dragIntent === 'before' ? '2px solid #6366f1' : '2px solid transparent',
+                          borderBottom: isOver && dragIntent === 'after' ? '2px solid #6366f1' : undefined,
                           boxShadow: isOver && dragIntent === 'nest' ? '0 0 0 2px #6366f1 inset' : 'none',
                           borderRadius: isOver && dragIntent === 'nest' ? '8px' : '',
                         }}>
@@ -650,12 +670,20 @@ function ShowDetailView({ show, members, getMember, expandedCats, setExpandedCat
                           onToggle={onToggleTask} onToggleAssignee={onToggleAssignee}
                           onEditTask={onEditTask} onDeleteTask={onDeleteTask}
                           onAddSubtask={onAddSubtask}
-                          expandedNotes={expandedNotes} setExpandedNotes={setExpandedNotes} />
+                          expandedNotes={expandedNotes} setExpandedNotes={setExpandedNotes}
+                          draggedTaskId={draggedTaskId}
+                          onTaskDragStart={(tid) => { setDraggedTaskId(tid); setTaskSrcCatId(cat.id); }}
+                          onTaskDragEnd={clearTaskDrag} />
                       </div>
                     );
                   })}
                   {cat.tasks.length === 0 && <p className="text-gray-600 text-xs py-3 px-5">No tasks yet — add one below.</p>}
-                  <div className="px-4 py-2 border-t border-gray-700/50">
+                  {/* Drop here to promote any task to root / reorder at end */}
+                  <div className="px-4 py-2"
+                    style={{ borderTop: dropBodyCatId === cat.id ? '2px solid #6366f1' : '2px solid transparent' }}
+                    onDragOver={e => { if (draggedTaskId) { e.preventDefault(); setDropBodyCatId(cat.id); setDragOverTaskId(null); } }}
+                    onDragLeave={e => { if (!e.currentTarget.contains(e.relatedTarget)) setDropBodyCatId(p => p === cat.id ? null : p); }}
+                    onDrop={e => { e.preventDefault(); if (draggedTaskId) onMoveToRoot(draggedTaskId, cat.id, null, 'end'); clearTaskDrag(); }}>
                     <button onClick={() => onAddTask(cat.id)} className="text-gray-500 hover:text-indigo-400 text-sm px-2 py-1 rounded hover:bg-gray-700/50 transition-colors">+ Add Task</button>
                   </div>
                 </div>
@@ -679,14 +707,21 @@ function ShowDetailView({ show, members, getMember, expandedCats, setExpandedCat
 }
 
 // ─── Task Row ─────────────────────────────────────────────────────────────────
-function TaskRow({ task, depth, members, getMember, onToggle, onToggleAssignee, onEditTask, onDeleteTask, onAddSubtask, expandedNotes, setExpandedNotes }) {
+function TaskRow({ task, depth, members, getMember, onToggle, onToggleAssignee, onEditTask, onDeleteTask, onAddSubtask, expandedNotes, setExpandedNotes, draggedTaskId, onTaskDragStart, onTaskDragEnd }) {
   const [childrenOpen, setChildrenOpen] = useState(true);
   const hasChildren = task.children?.length > 0;
   const indent = depth * 20;
+  // Subtasks (depth > 0) are made draggable here; root tasks are made draggable by their wrapper in ShowDetailView
+  const subDragProps = depth > 0 ? {
+    draggable: true,
+    onDragStart: e => { e.stopPropagation(); onTaskDragStart?.(task.id); },
+    onDragEnd: e => { e.stopPropagation(); onTaskDragEnd?.(); },
+  } : {};
   return (
     <div>
       <div className={`flex items-center gap-2 py-2 px-3 rounded-lg group ${task.done ? 'opacity-60' : ''}`}
-        style={{ paddingLeft: `${12 + indent}px`, backgroundColor: task.done ? 'transparent' : 'rgba(255,255,255,0.02)' }}>
+        style={{ paddingLeft: `${12 + indent}px`, backgroundColor: task.done ? 'transparent' : 'rgba(255,255,255,0.02)', opacity: draggedTaskId === task.id ? 0.4 : 1, cursor: depth > 0 ? 'grab' : undefined }}
+        {...subDragProps}>
         {hasChildren
           ? <button onClick={() => setChildrenOpen(o => !o)} className="text-gray-500 text-xs w-3 flex-shrink-0">{childrenOpen ? '▾' : '▸'}</button>
           : <span className="w-3 flex-shrink-0" />}
@@ -712,6 +747,7 @@ function TaskRow({ task, depth, members, getMember, onToggle, onToggleAssignee, 
           members={members} getMember={getMember}
           onToggle={onToggle} onToggleAssignee={onToggleAssignee}
           onEditTask={onEditTask} onDeleteTask={onDeleteTask}
+          draggedTaskId={draggedTaskId} onTaskDragStart={onTaskDragStart} onTaskDragEnd={onTaskDragEnd}
           onAddSubtask={onAddSubtask}
           expandedNotes={expandedNotes} setExpandedNotes={setExpandedNotes} />
       ))}
