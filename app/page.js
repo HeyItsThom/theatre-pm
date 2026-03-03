@@ -164,6 +164,24 @@ const LOAD_IN_TEMPLATE = [
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 const calcProgress = (tasks) => !tasks.length ? 0 : Math.round((tasks.filter(t => t.done).length / tasks.length) * 100);
 
+// Task tree utilities (tasks can be nested to any depth via children[])
+const flattenTasks = (tasks) => {
+  const out = [];
+  const walk = (ts) => ts.forEach(t => { out.push(t); if (t.children?.length) walk(t.children); });
+  walk(tasks);
+  return out;
+};
+const buildTaskTree = (allTasks, parentId) =>
+  allTasks.filter(t => t.parent_id === parentId).map(t => ({ ...t, children: buildTaskTree(allTasks, t.id) }));
+const addChildToTask = (tasks, parentId, child) =>
+  tasks.map(t => t.id === parentId ? { ...t, children: [...(t.children || []), child] } : { ...t, children: addChildToTask(t.children || [], parentId, child) });
+const updateTaskInTree = (tasks, taskId, updates) =>
+  tasks.map(t => t.id === taskId ? { ...t, ...updates } : { ...t, children: updateTaskInTree(t.children || [], taskId, updates) });
+const removeTaskFromTree = (tasks, taskId) =>
+  tasks.filter(t => t.id !== taskId).map(t => ({ ...t, children: removeTaskFromTree(t.children || [], taskId) }));
+const markAllInTree = (tasks, done) =>
+  tasks.map(t => ({ ...t, done, children: markAllInTree(t.children || [], done) }));
+
 const ProgressBar = ({ pct, size = 'md' }) => {
   const h = size === 'sm' ? 'h-1.5' : size === 'lg' ? 'h-3' : 'h-2';
   const color = pct === 100 ? '#2ecc71' : pct > 60 ? '#3498db' : pct > 30 ? '#f39c12' : '#e74c3c';
@@ -187,6 +205,12 @@ const Avatar = ({ member }) => (
 const Badge = ({ children, color = 'gray' }) => {
   const colors = { gray: 'bg-gray-700 text-gray-300', green: 'bg-green-900 text-green-300', red: 'bg-red-900 text-red-300', yellow: 'bg-yellow-900 text-yellow-300' };
   return <span className={`px-2 py-0.5 rounded text-xs font-medium ${colors[color]}`}>{children}</span>;
+};
+
+const PriorityBadge = ({ priority }) => {
+  if (!priority || priority === 'medium') return null;
+  if (priority === 'high') return <Badge color="red">↑ High</Badge>;
+  return <Badge color="gray">↓ Low</Badge>;
 };
 
 const DeadlineBadge = ({ deadline, done }) => {
@@ -260,11 +284,12 @@ export default function App() {
         taskAssigneeMap[a.task_id].push(a.member_id);
       });
 
-      const tasksWithAssignees = (tasksRes.data || []).map(t => ({ ...t, assignees: taskAssigneeMap[t.id] || [] }));
+      const tasksWithAssignees = (tasksRes.data || []).map(t => ({ ...t, assignees: taskAssigneeMap[t.id] || [], children: [] }));
       const subMap = {};
       (subsRes.data || []).forEach(s => {
         if (!subMap[s.category_id]) subMap[s.category_id] = [];
-        subMap[s.category_id].push({ ...s, tasks: tasksWithAssignees.filter(t => t.subcategory_id === s.id) });
+        const rootTasks = tasksWithAssignees.filter(t => t.subcategory_id === s.id && !t.parent_id);
+        subMap[s.category_id].push({ ...s, tasks: rootTasks.map(t => ({ ...t, children: buildTaskTree(tasksWithAssignees, t.id) })) });
       });
       const catMap = {};
       (catsRes.data || []).forEach(c => {
@@ -322,8 +347,8 @@ export default function App() {
   // ── Category CRUD ──────────────────────────────────────────────────────────
   const createCategory = async (showId, title) => {
     await withSaving(async () => {
-      await supabase.from('categories').insert({ show_id: showId, title, sort_order: 999 });
-      await loadAll();
+      const { data: cat } = await supabase.from('categories').insert({ show_id: showId, title, sort_order: 999 }).select().single();
+      setShows(prev => prev.map(s => s.id === showId ? { ...s, categories: [...s.categories, { ...cat, items: [] }] } : s));
     });
   };
   const deleteCategory = async (catId) => {
@@ -333,8 +358,8 @@ export default function App() {
   // ── Subcategory CRUD ───────────────────────────────────────────────────────
   const createSubcategory = async (catId, title) => {
     await withSaving(async () => {
-      await supabase.from('subcategories').insert({ category_id: catId, title, sort_order: 999 });
-      await loadAll();
+      const { data: sub } = await supabase.from('subcategories').insert({ category_id: catId, title, sort_order: 999 }).select().single();
+      setShows(prev => prev.map(s => ({ ...s, categories: s.categories.map(c => c.id === catId ? { ...c, items: [...c.items, { ...sub, tasks: [] }] } : c) })));
     });
   };
   const deleteSubcategory = async (subId) => {
@@ -344,36 +369,70 @@ export default function App() {
   // ── Task CRUD ──────────────────────────────────────────────────────────────
   const createTask = async (subId, form) => {
     await withSaving(async () => {
-      const { data: task } = await supabase.from('tasks').insert({ subcategory_id: subId, title: form.title, notes: form.notes || '', deadline: form.deadline || null, sort_order: 999 }).select().single();
+      const { data: task } = await supabase.from('tasks').insert({ subcategory_id: subId, title: form.title, notes: form.notes || '', deadline: form.deadline || null, priority: form.priority || 'medium', sort_order: 999 }).select().single();
       if (form.assignees?.length) {
         await supabase.from('task_assignees').insert(form.assignees.map(mid => ({ task_id: task.id, member_id: mid })));
       }
-      await loadAll();
+      const newTask = { ...task, assignees: form.assignees || [], children: [] };
+      setShows(prev => prev.map(s => ({ ...s, categories: s.categories.map(c => ({ ...c, items: c.items.map(i => i.id === subId ? { ...i, tasks: [...i.tasks, newTask] } : i) })) })));
     });
   };
   const updateTask = async (taskId, form) => {
     await withSaving(async () => {
-      await supabase.from('tasks').update({ title: form.title, notes: form.notes || '', deadline: form.deadline || null }).eq('id', taskId);
+      await supabase.from('tasks').update({ title: form.title, notes: form.notes || '', deadline: form.deadline || null, priority: form.priority || 'medium' }).eq('id', taskId);
       await supabase.from('task_assignees').delete().eq('task_id', taskId);
       if (form.assignees?.length) {
         await supabase.from('task_assignees').insert(form.assignees.map(mid => ({ task_id: taskId, member_id: mid })));
       }
-      await loadAll();
+      setShows(prev => prev.map(s => ({ ...s, categories: s.categories.map(c => ({ ...c, items: c.items.map(i => ({ ...i, tasks: updateTaskInTree(i.tasks, taskId, { title: form.title, notes: form.notes || '', deadline: form.deadline || null, priority: form.priority || 'medium', assignees: form.assignees || [] }) })) })) })));
     });
+  };
+  const createSubtask = async (parentId, form) => {
+    await withSaving(async () => {
+      const { data: task } = await supabase.from('tasks').insert({ parent_id: parentId, title: form.title, notes: form.notes || '', deadline: form.deadline || null, priority: form.priority || 'medium', sort_order: 999 }).select().single();
+      if (form.assignees?.length) {
+        await supabase.from('task_assignees').insert(form.assignees.map(mid => ({ task_id: task.id, member_id: mid })));
+      }
+      const newTask = { ...task, assignees: form.assignees || [], children: [] };
+      setShows(prev => prev.map(s => ({ ...s, categories: s.categories.map(c => ({ ...c, items: c.items.map(i => ({ ...i, tasks: addChildToTask(i.tasks, parentId, newTask) })) })) })));
+    });
+  };
+  const toggleTaskAssignee = async (taskId, memberId, currentAssignees) => {
+    const newAssignees = currentAssignees.includes(memberId)
+      ? currentAssignees.filter(id => id !== memberId)
+      : [...currentAssignees, memberId];
+    await supabase.from('task_assignees').delete().eq('task_id', taskId);
+    if (newAssignees.length) {
+      await supabase.from('task_assignees').insert(newAssignees.map(mid => ({ task_id: taskId, member_id: mid })));
+    }
+    setShows(prev => prev.map(s => ({ ...s, categories: s.categories.map(c => ({ ...c, items: c.items.map(i => ({ ...i, tasks: updateTaskInTree(i.tasks, taskId, { assignees: newAssignees }) })) })) })));
+  };
+  const toggleSubcategory = async (subId, current) => {
+    await supabase.from('subcategories').update({ done: !current }).eq('id', subId);
+    setShows(prev => prev.map(s => ({ ...s, categories: s.categories.map(c => ({ ...c, items: c.items.map(i => i.id === subId ? { ...i, done: !current } : i) })) })));
+  };
+  const toggleAllSubTasks = async (subId, targetDone) => {
+    const sub = shows.flatMap(s => s.categories.flatMap(c => c.items)).find(i => i.id === subId);
+    const taskIds = flattenTasks(sub?.tasks || []).map(t => t.id);
+    await Promise.all(taskIds.map(id => supabase.from('tasks').update({ done: targetDone }).eq('id', id)));
+    setShows(prev => prev.map(s => ({ ...s, categories: s.categories.map(c => ({ ...c, items: c.items.map(i => i.id === subId ? { ...i, tasks: markAllInTree(i.tasks, targetDone) } : i) })) })));
   };
   const toggleTask = async (taskId, current) => {
     await supabase.from('tasks').update({ done: !current }).eq('id', taskId);
-    setShows(prev => prev.map(s => ({ ...s, categories: s.categories.map(c => ({ ...c, items: c.items.map(i => ({ ...i, tasks: i.tasks.map(t => t.id === taskId ? { ...t, done: !current } : t) })) })) })));
+    setShows(prev => prev.map(s => ({ ...s, categories: s.categories.map(c => ({ ...c, items: c.items.map(i => ({ ...i, tasks: updateTaskInTree(i.tasks, taskId, { done: !current }) })) })) })));
   };
   const deleteTask = async (taskId) => {
-    await withSaving(async () => { await supabase.from('tasks').delete().eq('id', taskId); await loadAll(); });
+    await withSaving(async () => {
+      await supabase.from('tasks').delete().eq('id', taskId);
+      setShows(prev => prev.map(s => ({ ...s, categories: s.categories.map(c => ({ ...c, items: c.items.map(i => ({ ...i, tasks: removeTaskFromTree(i.tasks, taskId) })) })) })));
+    });
   };
 
   // ── Member CRUD ────────────────────────────────────────────────────────────
   const createMember = async (form) => {
     await withSaving(async () => {
-      await supabase.from('members').insert({ name: form.name, role: form.role, color: form.color });
-      await loadAll();
+      const { data: member } = await supabase.from('members').insert({ name: form.name, role: form.role, color: form.color }).select().single();
+      setMembers(prev => [...prev, member]);
     });
   };
   const deleteMember = async (memberId) => {
@@ -386,7 +445,10 @@ export default function App() {
   // ── All tasks flat list ────────────────────────────────────────────────────
   const allTasks = () => {
     const out = [];
-    shows.forEach(s => s.categories.forEach(c => c.items.forEach(i => i.tasks.forEach(t => out.push({ ...t, showId: s.id, showTitle: s.title, showColor: s.color, catTitle: c.title, itemTitle: i.title })))));
+    shows.forEach(s => s.categories.forEach(c => c.items.forEach(i => {
+      const ctx = { showId: s.id, showTitle: s.title, showColor: s.color, catTitle: c.title, itemTitle: i.title };
+      flattenTasks(i.tasks).forEach(t => out.push({ ...t, ...ctx }));
+    })));
     return out;
   };
   const filteredTodo = () => {
@@ -430,7 +492,11 @@ export default function App() {
             onDeleteCategory={(catId, title) => askConfirm(`Delete category "${title}" and all tasks?`, () => deleteCategory(catId))}
             onAddSub={(catId, title) => createSubcategory(catId, title)}
             onDeleteSub={(subId, title) => askConfirm(`Delete subcategory "${title}" and all tasks?`, () => deleteSubcategory(subId))}
+            onToggleSub={toggleSubcategory}
+            onToggleAllSubTasks={toggleAllSubTasks}
+            onToggleAssignee={toggleTaskAssignee}
             onAddTask={(subId) => setModal({ type: 'addTask', subId })}
+            onAddSubtask={(parentId) => setModal({ type: 'addSubtask', parentId })}
             onEditTask={(task) => setModal({ type: 'editTask', task })}
             onToggleTask={toggleTask}
             onDeleteTask={(taskId, title) => askConfirm(`Delete task "${title}"?`, () => deleteTask(taskId))}
@@ -448,6 +514,7 @@ export default function App() {
       {modal?.type === 'addShow' && <AddShowModal onClose={() => setModal(null)} onSave={createShow} />}
       {modal?.type === 'members' && <MembersModal members={members} onClose={() => setModal(null)} onAdd={createMember} onDelete={(id) => askConfirm('Remove team member? They will be unassigned from all tasks.', () => deleteMember(id))} />}
       {modal?.type === 'addTask' && <TaskModal title="New Task" members={members} onClose={() => setModal(null)} onSave={(form) => createTask(modal.subId, form)} />}
+      {modal?.type === 'addSubtask' && <TaskModal title="New Subtask" members={members} onClose={() => setModal(null)} onSave={(form) => createSubtask(modal.parentId, form)} />}
       {modal?.type === 'editTask' && <TaskModal title="Edit Task" members={members} initial={modal.task} onClose={() => setModal(null)} onSave={(form) => updateTask(modal.task.id, form)} />}
       {confirm && <ConfirmModal message={confirm.message} onConfirm={confirm.onConfirm} onClose={() => setConfirm(null)} />}
     </div>
@@ -497,9 +564,10 @@ function ShowsView({ shows, onNew, onOpen, onDelete }) {
 }
 
 // ─── Show Detail View ─────────────────────────────────────────────────────────
-function ShowDetailView({ show, members, getMember, expandedCats, setExpandedCats, expandedItems, setExpandedItems, onBack, onDelete, onAddCategory, onDeleteCategory, onAddSub, onDeleteSub, onAddTask, onEditTask, onToggleTask, onDeleteTask }) {
+function ShowDetailView({ show, members, getMember, expandedCats, setExpandedCats, expandedItems, setExpandedItems, onBack, onDelete, onAddCategory, onDeleteCategory, onAddSub, onDeleteSub, onToggleSub, onToggleAllSubTasks, onAddTask, onAddSubtask, onEditTask, onToggleTask, onToggleAssignee, onDeleteTask }) {
   const [newCatName, setNewCatName] = useState('');
-  const allT = show.categories.flatMap(c => c.items.flatMap(i => i.tasks));
+  const [expandedNotes, setExpandedNotes] = useState({});
+  const allT = show.categories.flatMap(c => c.items.flatMap(i => flattenTasks(i.tasks)));
   const pct = calcProgress(allT);
 
   return (
@@ -516,7 +584,7 @@ function ShowDetailView({ show, members, getMember, expandedCats, setExpandedCat
 
       <div className="space-y-3">
         {show.categories.map(cat => {
-          const catTasks = cat.items.flatMap(i => i.tasks);
+          const catTasks = cat.items.flatMap(i => flattenTasks(i.tasks));
           const catPct = calcProgress(catTasks);
           const open = expandedCats[cat.id] !== false;
           return (
@@ -530,34 +598,35 @@ function ShowDetailView({ show, members, getMember, expandedCats, setExpandedCat
               {open && (
                 <div className="border-t border-gray-700 divide-y divide-gray-700">
                   {cat.items.map(item => {
-                    const itemPct = calcProgress(item.tasks);
+                    const flatItemTasks = flattenTasks(item.tasks);
+                    const allDone = flatItemTasks.length > 0 && flatItemTasks.every(t => t.done);
+                    const anyDone = flatItemTasks.some(t => t.done);
+                    const itemPct = calcProgress(flatItemTasks);
                     const itemOpen = expandedItems[item.id] !== false;
                     return (
                       <div key={item.id}>
                         <div className="flex items-center gap-3 px-6 py-3 bg-gray-800">
+                          {item.tasks.length === 0
+                            ? <button onClick={() => onToggleSub(item.id, item.done)} className={`w-5 h-5 rounded flex-shrink-0 border-2 flex items-center justify-center transition-colors ${item.done ? 'bg-green-600 border-green-600' : 'border-gray-500 hover:border-indigo-400'}`}>{item.done && <span className="text-white text-xs">✓</span>}</button>
+                            : <button onClick={() => onToggleAllSubTasks(item.id, !allDone)} className={`w-5 h-5 rounded flex-shrink-0 border-2 flex items-center justify-center transition-colors ${allDone ? 'bg-green-600 border-green-600' : anyDone ? 'border-indigo-400 bg-indigo-900/40' : 'border-gray-500 hover:border-indigo-400'}`}>{allDone ? <span className="text-white text-xs">✓</span> : anyDone ? <span className="text-indigo-400 text-xs">–</span> : null}</button>
+                          }
                           <button className="text-gray-500 text-xs w-3" onClick={() => setExpandedItems(p => ({ ...p, [item.id]: !itemOpen }))}>{itemOpen ? '▾' : '▸'}</button>
-                          <span className="text-gray-200 font-medium flex-1 cursor-pointer" onClick={() => setExpandedItems(p => ({ ...p, [item.id]: !itemOpen }))}>{item.title}</span>
-                          <div className="w-24 hidden sm:block"><ProgressBar pct={itemPct} size="sm" /></div>
-                          <Badge color={itemPct === 100 ? 'green' : 'gray'}>{item.tasks.filter(t => t.done).length}/{item.tasks.length}</Badge>
+                          <span className={`font-medium flex-1 cursor-pointer ${item.tasks.length === 0 && item.done ? 'line-through text-gray-500' : 'text-gray-200'}`} onClick={() => setExpandedItems(p => ({ ...p, [item.id]: !itemOpen }))}>{item.title}</span>
+                          {flatItemTasks.length > 0 && <><div className="w-24 hidden sm:block"><ProgressBar pct={itemPct} size="sm" /></div><Badge color={itemPct === 100 ? 'green' : 'gray'}>{flatItemTasks.filter(t => t.done).length}/{flatItemTasks.length}</Badge></>}
                           <button onClick={() => onAddTask(item.id)} className="text-gray-500 hover:text-indigo-400 text-sm px-2 py-1 rounded hover:bg-gray-700">+ Task</button>
                           <button onClick={() => onDeleteSub(item.id, item.title)} className="text-gray-600 hover:text-red-400 px-1 py-1 rounded hover:bg-gray-700">🗑</button>
                         </div>
                         {itemOpen && (
-                          <div className="px-6 pb-2 pt-1 space-y-1" style={{ backgroundColor: '#1a1f2e' }}>
+                          <div className="pb-2 pt-1" style={{ backgroundColor: '#1a1f2e' }}>
                             {item.tasks.map(task => (
-                              <div key={task.id} className={`flex items-center gap-3 py-2 px-3 rounded-lg group ${task.done ? 'opacity-60' : ''}`} style={{ backgroundColor: task.done ? 'transparent' : 'rgba(255,255,255,0.02)' }}>
-                                <button onClick={() => onToggleTask(task.id, task.done)} className={`w-5 h-5 rounded flex-shrink-0 border-2 flex items-center justify-center transition-colors ${task.done ? 'bg-green-600 border-green-600' : 'border-gray-600 hover:border-indigo-400'}`}>{task.done && <span className="text-white text-xs">✓</span>}</button>
-                                <span className={`flex-1 text-sm ${task.done ? 'line-through text-gray-500' : 'text-gray-200'}`}>{task.title}</span>
-                                {task.notes && <span className="text-gray-600 hidden sm:block" title={task.notes}>📝</span>}
-                                <DeadlineBadge deadline={task.deadline} done={task.done} />
-                                <div className="flex -space-x-1">{task.assignees.map(aid => { const m = getMember(aid); return m ? <Avatar key={aid} member={m} /> : null; })}</div>
-                                <div className="opacity-0 group-hover:opacity-100 flex gap-1 transition-opacity">
-                                  <button onClick={() => onEditTask(task)} className="text-gray-500 hover:text-indigo-400 px-1 py-1 rounded hover:bg-gray-700 text-xs">✏</button>
-                                  <button onClick={() => onDeleteTask(task.id, task.title)} className="text-gray-500 hover:text-red-400 px-1 py-1 rounded hover:bg-gray-700 text-xs">🗑</button>
-                                </div>
-                              </div>
+                              <TaskRow key={task.id} task={task} depth={0}
+                                members={members} getMember={getMember}
+                                onToggle={onToggleTask} onToggleAssignee={onToggleAssignee}
+                                onEditTask={onEditTask} onDeleteTask={onDeleteTask}
+                                onAddSubtask={onAddSubtask}
+                                expandedNotes={expandedNotes} setExpandedNotes={setExpandedNotes} />
                             ))}
-                            {item.tasks.length === 0 && <p className="text-gray-600 text-xs py-2">No tasks yet.</p>}
+                            {item.tasks.length === 0 && <p className="text-gray-600 text-xs py-2 px-9">No tasks yet.</p>}
                           </div>
                         )}
                       </div>
@@ -584,6 +653,46 @@ function ShowDetailView({ show, members, getMember, expandedCats, setExpandedCat
   );
 }
 
+function TaskRow({ task, depth, members, getMember, onToggle, onToggleAssignee, onEditTask, onDeleteTask, onAddSubtask, expandedNotes, setExpandedNotes }) {
+  const [childrenOpen, setChildrenOpen] = useState(true);
+  const hasChildren = task.children?.length > 0;
+  const indent = depth * 20;
+  return (
+    <div>
+      <div className={`flex items-center gap-2 py-2 px-3 rounded-lg group ${task.done ? 'opacity-60' : ''}`}
+        style={{ paddingLeft: `${12 + indent}px`, backgroundColor: task.done ? 'transparent' : 'rgba(255,255,255,0.02)' }}>
+        {hasChildren
+          ? <button onClick={() => setChildrenOpen(o => !o)} className="text-gray-500 text-xs w-3 flex-shrink-0">{childrenOpen ? '▾' : '▸'}</button>
+          : <span className="w-3 flex-shrink-0" />}
+        <button onClick={() => onToggle(task.id, task.done)} className={`w-5 h-5 rounded flex-shrink-0 border-2 flex items-center justify-center transition-colors ${task.done ? 'bg-green-600 border-green-600' : 'border-gray-600 hover:border-indigo-400'}`}>{task.done && <span className="text-white text-xs">✓</span>}</button>
+        <span className={`flex-1 text-sm ${task.done ? 'line-through text-gray-500' : 'text-gray-200'}`}>{task.title}</span>
+        <PriorityBadge priority={task.priority} />
+        {task.notes && <button onClick={() => setExpandedNotes(p => ({ ...p, [task.id]: !p[task.id] }))} className={`hidden sm:block text-xs px-1 py-0.5 rounded transition-colors ${expandedNotes[task.id] ? 'text-indigo-400' : 'text-gray-600 hover:text-gray-400'}`}>📝</button>}
+        <DeadlineBadge deadline={task.deadline} done={task.done} />
+        <QuickAssign task={task} members={members} getMember={getMember} onToggle={onToggleAssignee} />
+        <div className="opacity-0 group-hover:opacity-100 flex gap-1 transition-opacity">
+          <button onClick={() => onAddSubtask(task.id)} className="text-gray-500 hover:text-indigo-400 px-1 py-1 rounded hover:bg-gray-700 text-xs" title="Add subtask">⊕</button>
+          <button onClick={() => onEditTask(task)} className="text-gray-500 hover:text-indigo-400 px-1 py-1 rounded hover:bg-gray-700 text-xs">✏</button>
+          <button onClick={() => onDeleteTask(task.id, task.title)} className="text-gray-500 hover:text-red-400 px-1 py-1 rounded hover:bg-gray-700 text-xs">🗑</button>
+        </div>
+      </div>
+      {expandedNotes[task.id] && task.notes && (
+        <div style={{ paddingLeft: `${32 + indent}px` }} className="pr-3 pb-1">
+          <p className="text-gray-400 text-xs bg-gray-900/60 rounded-lg px-3 py-2 leading-relaxed whitespace-pre-line">{task.notes}</p>
+        </div>
+      )}
+      {hasChildren && childrenOpen && task.children.map(child => (
+        <TaskRow key={child.id} task={child} depth={depth + 1}
+          members={members} getMember={getMember}
+          onToggle={onToggle} onToggleAssignee={onToggleAssignee}
+          onEditTask={onEditTask} onDeleteTask={onDeleteTask}
+          onAddSubtask={onAddSubtask}
+          expandedNotes={expandedNotes} setExpandedNotes={setExpandedNotes} />
+      ))}
+    </div>
+  );
+}
+
 function AddSubcategoryInline({ catId, onAdd }) {
   const [val, setVal] = useState('');
   return (
@@ -593,6 +702,28 @@ function AddSubcategoryInline({ catId, onAdd }) {
         placeholder="Add subcategory…"
         className="flex-1 bg-gray-900 border border-gray-700 rounded-lg px-3 py-1.5 text-white text-xs focus:outline-none focus:border-indigo-500" />
       <button onClick={() => { if (val.trim()) { onAdd(catId, val.trim()); setVal(''); } }} className="text-gray-500 hover:text-indigo-400 text-xs px-2">+ Sub</button>
+    </div>
+  );
+}
+
+function QuickAssign({ task, members, getMember, onToggle }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="relative flex items-center gap-1">
+      <div className="flex -space-x-1">{task.assignees.map(aid => { const m = getMember(aid); return m ? <Avatar key={aid} member={m} /> : null; })}</div>
+      <button onClick={() => setOpen(o => !o)} className={`w-5 h-5 rounded-full border flex items-center justify-center text-xs transition-colors ${open ? 'border-indigo-400 text-indigo-400' : 'border-gray-600 text-gray-500 hover:border-indigo-400 hover:text-indigo-400'}`}>+</button>
+      {open && (
+        <div className="absolute right-0 top-full mt-1 bg-gray-800 border border-gray-600 rounded-lg p-2 z-20 flex flex-wrap gap-1.5 shadow-xl min-w-max" onMouseLeave={() => setOpen(false)}>
+          {members.length === 0 && <p className="text-gray-500 text-xs px-1 py-0.5">No team members yet.</p>}
+          {members.map(m => (
+            <button key={m.id} title={m.name} onClick={() => onToggle(task.id, m.id, task.assignees)}
+              className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-white text-xs transition-all ${task.assignees.includes(m.id) ? 'ring-2 ring-white ring-offset-1 ring-offset-gray-800' : 'opacity-40 hover:opacity-100'}`}
+              style={{ backgroundColor: m.color }}>
+              {m.name.split(' ').map(n => n[0]).join('')}
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -625,6 +756,7 @@ function TodoView({ tasks, members, getMember, filterMember, setFilterMember, fi
                 <div key={task.id} className={`flex items-center gap-3 px-4 py-3 ${task.done ? 'opacity-60' : ''}`}>
                   <button onClick={() => onToggle(task.id, task.done)} className={`w-5 h-5 rounded flex-shrink-0 border-2 flex items-center justify-center ${task.done ? 'bg-green-600 border-green-600' : 'border-gray-600 hover:border-indigo-400'}`}>{task.done && <span className="text-white text-xs">✓</span>}</button>
                   <div className="flex-1 min-w-0"><div className={`text-sm ${task.done ? 'line-through text-gray-500' : 'text-gray-200'}`}>{task.title}</div><div className="text-xs text-gray-500">{task.catTitle} › {task.itemTitle}</div></div>
+                  <PriorityBadge priority={task.priority} />
                   <DeadlineBadge deadline={task.deadline} done={task.done} />
                   <div className="flex -space-x-1">{task.assignees.map(aid => { const m = getMember(aid); return m ? <Avatar key={aid} member={m} /> : null; })}</div>
                 </div>
@@ -658,7 +790,7 @@ function AddShowModal({ onClose, onSave }) {
           <div className="flex items-start gap-3">
             <div className={`w-5 h-5 rounded-full border-2 flex-shrink-0 mt-0.5 flex items-center justify-center ${useTemplate ? 'border-indigo-400 bg-indigo-500' : 'border-gray-500'}`}>{useTemplate && <div className="w-2 h-2 rounded-full bg-white" />}</div>
             <div><div className="flex items-center gap-2 flex-wrap"><span className="text-white font-semibold text-sm">🎭 Load-In Template</span><span className="bg-indigo-700 text-indigo-200 text-xs px-2 py-0.5 rounded">Recommended</span></div>
-              <p className="text-gray-400 text-xs mt-1">Full production checklist — {TEMPLATE_SUMMARY}. Delete what you don't need.</p></div>
+              <p className="text-gray-400 text-xs mt-1">Full production checklist — {TEMPLATE_SUMMARY}. Delete what you don&apos;t need.</p></div>
           </div>
         </div>
         <div className={`rounded-xl border-2 p-3 cursor-pointer ${!useTemplate ? 'border-indigo-500 bg-indigo-900/20' : 'border-gray-600 hover:border-gray-500'}`} onClick={() => setUseTemplate(false)}>
@@ -733,7 +865,7 @@ function MembersModal({ members, onClose, onAdd, onDelete }) {
 
 // ─── Task Modal ───────────────────────────────────────────────────────────────
 function TaskModal({ title, members, initial = {}, onClose, onSave }) {
-  const [form, setForm] = useState({ title: initial.title || '', deadline: initial.deadline || '', notes: initial.notes || '', assignees: initial.assignees || [] });
+  const [form, setForm] = useState({ title: initial.title || '', deadline: initial.deadline || '', notes: initial.notes || '', assignees: initial.assignees || [], priority: initial.priority || 'medium' });
   const [saving, setSaving] = useState(false);
   const toggle = (id) => setForm(f => ({ ...f, assignees: f.assignees.includes(id) ? f.assignees.filter(a => a !== id) : [...f.assignees, id] }));
   const handleSave = async () => {
@@ -755,6 +887,20 @@ function TaskModal({ title, members, initial = {}, onClose, onSave }) {
         <div><label className="text-xs text-gray-400 block mb-1">Notes</label>
           <textarea value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} rows={2} placeholder="Any notes…"
             className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-indigo-500 resize-none" /></div>
+        <div><label className="text-xs text-gray-400 block mb-1">Priority</label>
+          <div className="flex gap-2">
+            {['low', 'medium', 'high'].map(p => (
+              <button key={p} onClick={() => setForm(f => ({ ...f, priority: p }))}
+                className={`flex-1 py-1.5 rounded-lg text-xs font-medium border transition-colors ${form.priority === p
+                  ? p === 'high' ? 'bg-red-900/60 border-red-500 text-red-300'
+                    : p === 'low' ? 'bg-gray-700 border-gray-400 text-gray-200'
+                    : 'bg-indigo-900/60 border-indigo-500 text-indigo-300'
+                  : 'border-gray-600 text-gray-500 hover:border-gray-500'}`}>
+                {p === 'high' ? '↑ High' : p === 'medium' ? 'Medium' : '↓ Low'}
+              </button>
+            ))}
+          </div>
+        </div>
         <div><label className="text-xs text-gray-400 block mb-2">Assign crew</label>
           <div className="flex flex-wrap gap-2">
             {members.map(m => (<button key={m.id} onClick={() => toggle(m.id)} className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm border ${form.assignees.includes(m.id) ? 'border-indigo-500 bg-indigo-900 text-white' : 'border-gray-600 text-gray-400 hover:border-gray-500'}`}>
